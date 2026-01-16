@@ -1,11 +1,18 @@
 #include "logger.h"
+#include "Hooks.h"
+#include "Settings.h"
 
 void OnMessage(SKSE::MessagingInterface::Message* message) {
     if (message->type == SKSE::MessagingInterface::kDataLoaded) {
-        // Start
+        Sink::InitializeForms();
+        Hook_OnMeleeHit::install();
+        UnblockableSettings::UnBlockLoad();
+        UnblockableSettings::UnBlockRegister();
+        RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink(Sink::PC3DLoadEventHandler::GetSingleton());
     }
     if (message->type == SKSE::MessagingInterface::kNewGame || message->type == SKSE::MessagingInterface::kPostLoadGame) {
-        // Post-load
+        RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink(Sink::NpcCombatTracker::GetSingleton());
+        Sink::NpcCombatTracker::RegisterSinksForExistingCombatants();
     }
 }
 
