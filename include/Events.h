@@ -20,9 +20,11 @@ namespace Sink {
 
     inline RE::BGSArtObject* UnblockHit = nullptr;
     inline RE::BGSArtObject* UnblockPowerHit = nullptr;
+    inline RE::TESEffectShader* ShaUnblockNormalHit = nullptr;
     inline RE::TESEffectShader* ShaUnblockPowerHit = nullptr;
-    inline RE::BGSExplosion* UnblockHitSound = nullptr;
-    inline RE::BGSExplosion* UnblockHitPowerSound = nullptr;
+    inline RE::TESEffectShader* UnblockHitSound = nullptr;
+    inline RE::TESEffectShader* UnblockHitPowerSound = nullptr;
+    inline RE::TESObjectACTI* test1 = nullptr;
 
     void ApplySlowTime(int a_duration, float a_multiplier);
      // Função auxiliar para carregar tudo no início
@@ -74,6 +76,47 @@ namespace Sink {
         inline static std::set<RE::FormID> g_trackedNPCs;
         inline static std::shared_mutex g_mutex;
     };
+
+    
 }
+class MyTriggerSink : public RE::BSTEventSink<RE::TESTriggerEnterEvent> {
+public:
+    // Singleton para facilitar o acesso e registro
+    static MyTriggerSink* GetSingleton() {
+        static MyTriggerSink singleton;
+        return &singleton;
+    }
+
+    // Função que processa o evento
+    RE::BSEventNotifyControl ProcessEvent(const RE::TESTriggerEnterEvent* a_event, RE::BSTEventSource<RE::TESTriggerEnterEvent>*) override {
+        if (!a_event) return RE::BSEventNotifyControl::kContinue;
+
+		auto caster = a_event->caster;
+		auto target = a_event->target;
+        logger::debug("Esse é de entrada Event formid é: {:08X}, e do caster é : {:08X}", target ? target->GetFormID() : 0, caster ? caster->GetFormID() : 0);
+		logger::debug("Trigger Enter Event: Caster {}, Target {}", caster ? caster->GetName() : 0, target ? target->GetName() : 0);
+        return RE::BSEventNotifyControl::kContinue;
+    }
+};
+
+class MyTriggerSink2 : public RE::BSTEventSink<RE::TESTriggerEvent> {
+public:
+    // Singleton para facilitar o acesso e registro
+    static MyTriggerSink2* GetSingleton() {
+        static MyTriggerSink2 singleton;
+        return &singleton;
+    }
+
+    // Função que processa o evento
+    RE::BSEventNotifyControl ProcessEvent(const RE::TESTriggerEvent* a_event, RE::BSTEventSource<RE::TESTriggerEvent>*) override {
+        if (!a_event) return RE::BSEventNotifyControl::kContinue;
+
+		auto caster = a_event->caster;
+		auto target = a_event->target;
+		logger::debug("Trigger Event: Caster {}, Target {}", caster ? caster->GetName() : 0, target ? target->GetName() : 0);
+		logger::debug("Event formid é: {:08X}, e do caster é : {:08X}", target ? target->GetFormID() : 0,caster ? caster->GetFormID() : 0);
+        return RE::BSEventNotifyControl::kContinue;
+    }
+};
 
 

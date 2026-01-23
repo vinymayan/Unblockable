@@ -6,6 +6,7 @@ void UnblockableSettings::SaveSettingsInternal(rapidjson::Document& doc, const c
     std::string p = prefix;
     doc.AddMember(rapidjson::Value((p + "Enabled").c_str(), allocator).Move(), s.enabled, allocator);
     doc.AddMember(rapidjson::Value((p + "Visuals").c_str(), allocator).Move(), s.visualsEnabled, allocator);
+    doc.AddMember(rapidjson::Value((p + "EffectShaderEnabled").c_str(), allocator).Move(), s.effectShaderEnabled, allocator);
     doc.AddMember(rapidjson::Value((p + "Sound").c_str(), allocator).Move(), s.soundEnabled, allocator);
     doc.AddMember(rapidjson::Value((p + "StaggerEnabled").c_str(), allocator).Move(), s.staggerEnabled, allocator); // Salvar Stagger
     doc.AddMember(rapidjson::Value((p + "StaggerMag").c_str(), allocator).Move(), s.staggerMagnitude, allocator);     // Salvar Magnitude
@@ -23,6 +24,7 @@ void UnblockableSettings::LoadSettingsInternal(rapidjson::Document& doc, const c
     std::string p = prefix;
     if (doc.HasMember((p + "Enabled").c_str())) s.enabled = doc[(p + "Enabled").c_str()].GetBool();
     if (doc.HasMember((p + "Visuals").c_str())) s.visualsEnabled = doc[(p + "Visuals").c_str()].GetBool();
+    if (doc.HasMember((p + "EffectShaderEnabled").c_str())) s.effectShaderEnabled = doc[(p + "EffectShaderEnabled").c_str()].GetBool();
     if (doc.HasMember((p + "Sound").c_str())) s.soundEnabled = doc[(p + "Sound").c_str()].GetBool();
     if (doc.HasMember((p + "StaggerEnabled").c_str())) s.staggerEnabled = doc[(p + "StaggerEnabled").c_str()].GetBool(); // Carregar Stagger
     if (doc.HasMember((p + "StaggerMag").c_str())) s.staggerMagnitude = doc[(p + "StaggerMag").c_str()].GetFloat();      // Carregar Magnitude
@@ -42,6 +44,7 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
         if (s.enabled) {
             ImGuiMCP::Indent();
             if (ImGuiMCP::Checkbox((std::string("Visual Effects##") + label).c_str(), &s.visualsEnabled)) changed = true;
+            if (ImGuiMCP::Checkbox((std::string("Effect Shader##") + label).c_str(), &s.effectShaderEnabled)) changed = true;
             if (ImGuiMCP::Checkbox((std::string("Sound Effects##") + label).c_str(), &s.soundEnabled)) changed = true;
             if (ImGuiMCP::Checkbox((std::string("Stagger on Hit##") + label).c_str(), &s.staggerEnabled)) changed = true;
             ImGuiMCP::Indent();

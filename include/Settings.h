@@ -20,6 +20,7 @@ namespace UnblockableSettings {
     struct ChanceSettings {
         bool enabled = true;
         bool visualsEnabled = true;
+        bool effectShaderEnabled = false;
         bool soundEnabled = true;
         bool slowTimeEnabled = true;
         float slowTimeMultiplier = 0.5f;
