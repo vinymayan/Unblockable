@@ -1,5 +1,7 @@
 #include "Events.h"
 #include "Settings.h"
+#include "DelayedDispatcher.h"
+
 bool teste = false;
 //void AttachTriggerToActor(RE::Actor* actor) {
 //    if (teste) return;
@@ -38,7 +40,7 @@ RE::BSEventNotifyControl Sink::NpcCombatTracker::ProcessEvent(const RE::TESComba
     
     auto actor = a_event->actor.get();
     auto* npc = actor->As<RE::Actor>();
-    if (npc && npc != RE::PlayerCharacter::GetSingleton()) {  // Garante que é um ator válido
+    if (npc && npc != RE::PlayerCharacter::GetSingleton()) {  // Garante que ï¿½ um ator vï¿½lido
         switch (a_event->newState.get()) {
         case RE::ACTOR_COMBAT_STATE::kCombat:
             NpcCombatTracker::RegisterSink(npc);
@@ -58,7 +60,7 @@ void Sink::NpcCombatTracker::RegisterSink(RE::Actor* a_actor)
     if (g_trackedNPCs.find(a_actor->GetFormID()) == g_trackedNPCs.end()) {
         a_actor->AddAnimationGraphEventSink(&g_npcSink);
         g_trackedNPCs.insert(a_actor->GetFormID());
-        //SKSE::log::info("[NpcCombatTracker] Começando a rastrear animações do ator {:08X}", a_actor->GetFormID());
+        //SKSE::log::info("[NpcCombatTracker] Comeï¿½ando a rastrear animaï¿½ï¿½es do ator {:08X}", a_actor->GetFormID());
     }
 }
 
@@ -70,29 +72,29 @@ void Sink::NpcCombatTracker::UnregisterSink(RE::Actor* a_actor)
     if (g_trackedNPCs.find(a_actor->GetFormID()) != g_trackedNPCs.end()) {
         a_actor->RemoveAnimationGraphEventSink(&g_npcSink);
         g_trackedNPCs.erase(a_actor->GetFormID());
-        //SKSE::log::info("[NpcCombatTracker] Parando de rastrear animações do ator {:08X}", a_actor->GetFormID());
+        //SKSE::log::info("[NpcCombatTracker] Parando de rastrear animaï¿½ï¿½es do ator {:08X}", a_actor->GetFormID());
     }
 }
 
 void Sink::NpcCombatTracker::RegisterSinksForExistingCombatants()
 {
-    SKSE::log::info("[NpcCombatTracker] Verificando NPCs já em combate após carregar o jogo...");
+    SKSE::log::info("[NpcCombatTracker] Verificando NPCs jï¿½ em combate apï¿½s carregar o jogo...");
 
     auto* processLists = RE::ProcessLists::GetSingleton();
     if (!processLists) {
-        SKSE::log::warn("[NpcCombatTracker] Não foi possível obter ProcessLists.");
+        SKSE::log::warn("[NpcCombatTracker] Nï¿½o foi possï¿½vel obter ProcessLists.");
         return;
     }
 
-    // Itera sobre todos os atores que estão "ativos" no jogo
+    // Itera sobre todos os atores que estï¿½o "ativos" no jogo
     for (auto& actorHandle : processLists->highActorHandles) {
         if (auto actor = actorHandle.get().get()) {
-            // A função IsInCombat() nos diz se o ator já está em um estado de combate
+            // A funï¿½ï¿½o IsInCombat() nos diz se o ator jï¿½ estï¿½ em um estado de combate
             if (!actor->IsPlayerRef()) {
                 if (actor->IsInCombat()) {
-                    SKSE::log::info("[NpcCombatTracker] Ator '{}' ({:08X}) já está em combate. Registrando sink...",
+                    SKSE::log::info("[NpcCombatTracker] Ator '{}' ({:08X}) jï¿½ estï¿½ em combate. Registrando sink...",
                         actor->GetName(), actor->GetFormID());
-                    // Usamos a mesma função de registro que já existe!
+                    // Usamos a mesma funï¿½ï¿½o de registro que jï¿½ existe!
                     RegisterSink(actor);
                 }
             }
@@ -100,19 +102,19 @@ void Sink::NpcCombatTracker::RegisterSinksForExistingCombatants()
         }
     }
 
-    SKSE::log::info("[NpcCombatTracker] Verificação concluída.");
+    SKSE::log::info("[NpcCombatTracker] Verificaï¿½ï¿½o concluï¿½da.");
 }
 
 bool IsPlayerInDanger(RE::Actor* npc, RE::PlayerCharacter* player) {
     if (!npc->IsAttacking()) return false;
 
-    // 1. Verificar distância (alcance da arma)
+    // 1. Verificar distï¿½ncia (alcance da arma)
     float distance = npc->GetDistance(player);
     if (distance > 250.0f) return false; // Exemplo de alcance melee
     RE::NiPoint3 origin;
-    RE::NiPoint3 forward; // O parâmetro a_direction será preenchido aqui
+    RE::NiPoint3 forward; // O parï¿½metro a_direction serï¿½ preenchido aqui
 
-    // False indica que não queremos o offset da câmera (ideal para NPCs)
+    // False indica que nï¿½o queremos o offset da cï¿½mera (ideal para NPCs)
     npc->GetEyeVector(origin, forward, false);
     RE::NiPoint3 toPlayer = player->GetPosition() - npc->GetPosition();
     toPlayer.Unitize();
@@ -203,7 +205,7 @@ RE::ActorValue UnblockableManager::GetSkillForWeapon(RE::TESObjectWEAP* a_weapon
     case RE::WEAPON_TYPE::kOneHandDagger:
     case RE::WEAPON_TYPE::kOneHandAxe:
     case RE::WEAPON_TYPE::kOneHandMace:
-    case RE::WEAPON_TYPE::kStaff: // Cajados geralmente usam animação de uma mão
+    case RE::WEAPON_TYPE::kStaff: // Cajados geralmente usam animaï¿½ï¿½o de uma mï¿½o
         return RE::ActorValue::kOneHanded;
 
     case RE::WEAPON_TYPE::kTwoHandSword:
@@ -215,7 +217,7 @@ RE::ActorValue UnblockableManager::GetSkillForWeapon(RE::TESObjectWEAP* a_weapon
         return RE::ActorValue::kArchery;
 
     case RE::WEAPON_TYPE::kHandToHandMelee:
-        // Em Skyrim, NPCs usam OneHanded para cálculos de combate desarmado frequentemente
+        // Em Skyrim, NPCs usam OneHanded para cï¿½lculos de combate desarmado frequentemente
         return RE::ActorValue::kOneHanded;
 
     default:
@@ -226,17 +228,17 @@ RE::ActorValue UnblockableManager::GetSkillForWeapon(RE::TESObjectWEAP* a_weapon
 void UnblockableManager::PlayUnblockableVisuals(RE::Actor* a_actor,bool isPower)
 {
     if (!a_actor) return;
-    // Busca a configuração correta (Normal ou Power) baseada no ataque
+    // Busca a configuraï¿½ï¿½o correta (Normal ou Power) baseada no ataque
     auto& settings = isPower ? UnblockableSettings::powerAttacks : UnblockableSettings::normalAttacks;
 
-    // --- Lógica de Som ---
+    // --- Lï¿½gica de Som ---
     if (settings.soundEnabled) {
         auto sound = isPower ? Sink::UnblockHitPowerSound : Sink::UnblockHitSound;
         a_actor->ApplyEffectShader(sound, -1.0f, nullptr, false, false);
 
     }
 
-    // --- Lógica Visual ---
+    // --- Lï¿½gica Visual ---
     if (settings.visualsEnabled) {
         auto actor3D = a_actor->Get3D();
         if (!actor3D) return;
@@ -259,7 +261,7 @@ void UnblockableManager::PlayUnblockableVisuals(RE::Actor* a_actor,bool isPower)
         auto shader = isPower ? Sink::ShaUnblockPowerHit : Sink::ShaUnblockNormalHit;
         if (shader) {
             // Aplica o shader ao ator. 
-            // O tempo -1.0f usa o tempo padrão do formulário, ou você pode definir ex: 2.0f
+            // O tempo -1.0f usa o tempo padrï¿½o do formulï¿½rio, ou vocï¿½ pode definir ex: 2.0f
             a_actor->ApplyEffectShader(shader, -1.0f, nullptr, false, false);
         }
     }
@@ -322,19 +324,16 @@ void Sink::ApplySlowTime(int a_duration, float a_multiplier)
         timer->SetGlobalTimeMultiplier(a_multiplier, true);
         int durationMs = static_cast<int>(a_duration * 1000.0f);
         g_IsSlowed = true;
-        std::thread([a_duration]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(a_duration));
-
-            // Retorna para a thread principal do SKSE para evitar instabilidade
+        
+        Utils::DelayedDispatcher::Get().PostDelayed(std::chrono::milliseconds(a_duration), []() {
             SKSE::GetTaskInterface()->AddTask([]() {
                 auto* timer = RE::BSTimer::GetSingleton();
                 if (timer) {
                     timer->SetGlobalTimeMultiplier(1.0f, true);
                     g_IsSlowed = false;
                 }
-                });
-            }).detach();
-    
+            });
+        });
     
     }
 }
@@ -356,7 +355,7 @@ void Sink::InitializeForms() {
     //test1 = dataHandler->LookupForm<RE::TESObjectACTI>(0x909, "Unblockable.esp");
 
     if (!UnblockHit) {
-        SKSE::log::critical("FALHA: não encontrado em UnblockHit.esp!");
+        SKSE::log::critical("FALHA: nï¿½o encontrado em UnblockHit.esp!");
     }
     else {
         SKSE::log::info("UnblockHit carregado com sucesso.");
@@ -367,15 +366,18 @@ void Sink::InitializeForms() {
 void Sink::ScheduleSinkRegistration(RE::Actor* actor, int attempts)
 {
     if (attempts > 20) {
-        SKSE::log::critical("[Actor3DLoadEventHandler] Desistindo após {} tentativas para o ator {:08X}.", attempts, actor->GetFormID());
+        SKSE::log::critical("[Actor3DLoadEventHandler] Desistindo apï¿½s {} tentativas para o ator {:08X}.", attempts, actor->GetFormID());
         return;
     }
-
-    std::thread([actor, attempts]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-        SKSE::GetTaskInterface()->AddTask([actor, attempts]() {
-            if (!actor) return;
+    
+    auto actorHandle = actor->CreateRefHandle();
+    
+    Utils::DelayedDispatcher::Get().PostDelayed(std::chrono::milliseconds(100), [actorHandle, attempts] {
+        SKSE::GetTaskInterface()->AddTask([actorHandle, attempts]() {
+            if (!actorHandle) return;
+            if (!actorHandle.get()) return;
+            
+            auto actor = actorHandle.get();
 
             RE::BSTSmartPointer<RE::BSAnimationGraphManager> graphManager;
             actor->GetAnimationGraphManager(graphManager);
@@ -384,18 +386,18 @@ void Sink::ScheduleSinkRegistration(RE::Actor* actor, int attempts)
                 SKSE::log::info("[Actor3DLoadEventHandler] Graph encontrado para {:08X}. Reconectando...", actor->GetFormID());
 
                 if (!actor->IsPlayerRef()) {
-                    Sink::NpcCombatTracker::UnregisterSink(actor);
-                    Sink::NpcCombatTracker::RegisterSink(actor);
+                    Sink::NpcCombatTracker::UnregisterSink(actor.get());
+                    Sink::NpcCombatTracker::RegisterSink(actor.get());
                     SKSE::log::info("[Actor3DLoadEventHandler] Sink de NPC reconectada (via CombatTracker).");
 
                 }
             }
             else {
                 // Graph ainda nulo, tenta de novo
-                ScheduleSinkRegistration(actor, attempts + 1);
+                ScheduleSinkRegistration(actor.get(), attempts + 1);
             }
-            });
-        }).detach();
+        });
+    });
 }
 
 RE::BSEventNotifyControl Sink::PC3DLoadEventHandler::ProcessEvent(const RE::TESObjectLoadedEvent* a_event, RE::BSTEventSource<RE::TESObjectLoadedEvent>*)
