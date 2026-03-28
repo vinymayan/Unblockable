@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <Windows.h>
 #include <string>
 #include <vector>
@@ -21,6 +21,7 @@ namespace UnblockableSettings {
         bool enabled = true;
         bool visualsEnabled = true;
         bool effectShaderEnabled = false;
+        float effectShaderDuration = 2.0f;
         bool soundEnabled = true;
         bool slowTimeEnabled = true;
         float slowTimeMultiplier = 0.5f;
@@ -34,7 +35,7 @@ namespace UnblockableSettings {
         float staggerMagnitude = 0.5f; 
     };
 
-    // Variáveis Globais
+    // VariÃ¡veis Globais
     inline ChanceSettings normalAttacks;
     inline ChanceSettings powerAttacks;
 
@@ -46,7 +47,7 @@ namespace UnblockableSettings {
 
     void UnBlockEventsMenu();
 
-    // Funções do Menu
+    // FunÃ§Ãµes do Menu
     void UnBlockMenu();
     void UnBlockPowerMenu();
     void UnBlockRegister();

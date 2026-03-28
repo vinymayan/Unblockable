@@ -1,4 +1,4 @@
-#include "Settings.h"
+ï»¿#include "Settings.h"
 
 const char* UnblockPath = "Data/SKSE/Plugins/UnblockableHits.json";
 
@@ -7,6 +7,7 @@ void UnblockableSettings::SaveSettingsInternal(rapidjson::Document& doc, const c
     doc.AddMember(rapidjson::Value((p + "Enabled").c_str(), allocator).Move(), s.enabled, allocator);
     doc.AddMember(rapidjson::Value((p + "Visuals").c_str(), allocator).Move(), s.visualsEnabled, allocator);
     doc.AddMember(rapidjson::Value((p + "EffectShaderEnabled").c_str(), allocator).Move(), s.effectShaderEnabled, allocator);
+    doc.AddMember(rapidjson::Value((p + "EffectShaderDur").c_str(), allocator).Move(), s.effectShaderDuration, allocator); 
     doc.AddMember(rapidjson::Value((p + "Sound").c_str(), allocator).Move(), s.soundEnabled, allocator);
     doc.AddMember(rapidjson::Value((p + "StaggerEnabled").c_str(), allocator).Move(), s.staggerEnabled, allocator); // Salvar Stagger
     doc.AddMember(rapidjson::Value((p + "StaggerMag").c_str(), allocator).Move(), s.staggerMagnitude, allocator);     // Salvar Magnitude
@@ -25,6 +26,7 @@ void UnblockableSettings::LoadSettingsInternal(rapidjson::Document& doc, const c
     if (doc.HasMember((p + "Enabled").c_str())) s.enabled = doc[(p + "Enabled").c_str()].GetBool();
     if (doc.HasMember((p + "Visuals").c_str())) s.visualsEnabled = doc[(p + "Visuals").c_str()].GetBool();
     if (doc.HasMember((p + "EffectShaderEnabled").c_str())) s.effectShaderEnabled = doc[(p + "EffectShaderEnabled").c_str()].GetBool();
+    if (doc.HasMember((p + "EffectShaderDur").c_str())) s.effectShaderDuration = doc[(p + "EffectShaderDur").c_str()].GetFloat(); 
     if (doc.HasMember((p + "Sound").c_str())) s.soundEnabled = doc[(p + "Sound").c_str()].GetBool();
     if (doc.HasMember((p + "StaggerEnabled").c_str())) s.staggerEnabled = doc[(p + "StaggerEnabled").c_str()].GetBool(); // Carregar Stagger
     if (doc.HasMember((p + "StaggerMag").c_str())) s.staggerMagnitude = doc[(p + "StaggerMag").c_str()].GetFloat();      // Carregar Magnitude
@@ -45,6 +47,20 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
             ImGuiMCP::Indent();
             if (ImGuiMCP::Checkbox((std::string("Visual Effects##") + label).c_str(), &s.visualsEnabled)) changed = true;
             if (ImGuiMCP::Checkbox((std::string("Effect Shader##") + label).c_str(), &s.effectShaderEnabled)) changed = true;
+            if (s.effectShaderEnabled) {
+                ImGuiMCP::Indent();
+
+                ImGuiMCP::SetNextItemWidth(250.0f);
+                if (ImGuiMCP::SliderFloat((std::string("Shader Duration (s)##") + label).c_str(), &s.effectShaderDuration, 0.1f, 10.0f, "%.1f")) changed = true;
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(70.0f);
+                if (ImGuiMCP::InputFloat((std::string("##ShaderDurPrecise") + label).c_str(), &s.effectShaderDuration, 0.0f, 0.0f, "%.1f")) {
+                    s.effectShaderDuration = std::clamp(s.effectShaderDuration, 0.1f, 60.0f); 
+                    changed = true;
+                }
+
+                ImGuiMCP::Unindent();
+            }
             if (ImGuiMCP::Checkbox((std::string("Sound Effects##") + label).c_str(), &s.soundEnabled)) changed = true;
             if (ImGuiMCP::Checkbox((std::string("Stagger on Hit##") + label).c_str(), &s.staggerEnabled)) changed = true;
             ImGuiMCP::Indent();
@@ -112,7 +128,7 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
             }
             ImGuiMCP::Separator();
 
-            // --- Seção de Simulação e Fórmula ---
+            // --- SeÃ§Ã£o de SimulaÃ§Ã£o e FÃ³rmula ---
             ImGuiMCP::TextColored({ 1.0f, 0.8f, 0.0f, 1.0f }, "Probability Logic:");
 
             ImGuiMCP::Spacing();
@@ -148,7 +164,7 @@ void UnblockableSettings::UnBlockEventsMenu() {
     ImGuiMCP::TextColored({ 1.0f, 0.8f, 0.0f, 1.0f }, "Animation Trigger Events:");
     ImGuiMCP::Separator();
 
-    // 1. Obter referências de estilo e largura da janela
+    // 1. Obter referÃªncias de estilo e largura da janela
     ImGuiMCP::ImGuiStyle* style = ImGuiMCP::GetStyle();
 
     ImGuiMCP::ImVec2 contentRegionAvail;
@@ -163,19 +179,19 @@ void UnblockableSettings::UnBlockEventsMenu() {
     for (size_t i = 0; i < triggerEvents.size(); ++i) {
         ImGuiMCP::PushID(static_cast<int>(i));
 
-        // 2. Calcular a largura necessária para este item (Botão X + Espaçamento + Texto)
+        // 2. Calcular a largura necessÃ¡ria para este item (BotÃ£o X + EspaÃ§amento + Texto)
         ImGuiMCP::ImVec2 textSize;
         // O seu imguimcp exige 5 argumentos para CalcTextSize
         ImGuiMCP::CalcTextSize(&textSize, triggerEvents[i].c_str(), nullptr, false, 0.0f);
 
-        // Largura total do "chip": Largura do botão + espaço interno + largura do texto
+        // Largura total do "chip": Largura do botÃ£o + espaÃ§o interno + largura do texto
         float itemWidth = frameHeight + style->ItemInnerSpacing.x + textSize.x;
 
-        // 3. Lógica de Quebra de Linha (Reflow)
+        // 3. LÃ³gica de Quebra de Linha (Reflow)
         if (i > 0) {
-            // Se o item atual + o espaçamento padrão ultrapassar a largura da janela
+            // Se o item atual + o espaÃ§amento padrÃ£o ultrapassar a largura da janela
             if (currentX + itemSpacing + itemWidth > availableWidth) {
-                // Não chama SameLine(), o que faz o cursor pular para a próxima linha
+                // NÃ£o chama SameLine(), o que faz o cursor pular para a prÃ³xima linha
                 currentX = 0.0f;
             }
             else {
@@ -185,10 +201,10 @@ void UnblockableSettings::UnBlockEventsMenu() {
             }
         }
 
-        // 4. Desenhar o grupo (Botão e Texto juntos)
+        // 4. Desenhar o grupo (BotÃ£o e Texto juntos)
         ImGuiMCP::BeginGroup();
 
-        // Botão de deletar evento
+        // BotÃ£o de deletar evento
         if (ImGuiMCP::Button("X", { frameHeight, frameHeight })) {
             triggerEvents.erase(triggerEvents.begin() + i);
             changed = true;
@@ -210,7 +226,7 @@ void UnblockableSettings::UnBlockEventsMenu() {
     ImGuiMCP::Spacing();
     ImGuiMCP::Separator();
 
-    // Adição de novos eventos
+    // AdiÃ§Ã£o de novos eventos
     ImGuiMCP::InputText("New Event Name", newEventBuf, sizeof(newEventBuf));
     if (ImGuiMCP::Button("Add Event") && strlen(newEventBuf) > 0) {
         triggerEvents.push_back(newEventBuf);
