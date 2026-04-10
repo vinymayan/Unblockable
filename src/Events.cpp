@@ -1,5 +1,7 @@
 ﻿#include "Events.h"
 #include "Settings.h"
+#include "DelayedDispatcher.h"
+
 bool teste = false;
 //void AttachTriggerToActor(RE::Actor* actor) {
 //    if (teste) return;
@@ -243,7 +245,8 @@ void UnblockableManager::PlayUnblockableVisuals(RE::Actor* a_actor,bool isPower)
         auto shader = isPower ? Sink::ShaUnblockPowerHit : Sink::ShaUnblockNormalHit;
         if (shader) {
             // Aplica o shader ao ator. 
-            a_actor->ApplyEffectShader(shader, settings.effectShaderDuration, nullptr, false, false);
+            // O tempo -1.0f usa o tempo padrão do formulário, ou você pode definir ex: 2.0f
+            a_actor->ApplyEffectShader(shader, -1.0f, nullptr, false, false);
         }
     }
 
@@ -305,19 +308,16 @@ void Sink::ApplySlowTime(int a_duration, float a_multiplier)
         timer->SetGlobalTimeMultiplier(a_multiplier, true);
         int durationMs = static_cast<int>(a_duration * 1000.0f);
         g_IsSlowed = true;
-        std::thread([a_duration]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(a_duration));
-
-            // Retorna para a thread principal do SKSE para evitar instabilidade
+        
+        Utils::DelayedDispatcher::Get().PostDelayed(std::chrono::milliseconds(a_duration), []() {
             SKSE::GetTaskInterface()->AddTask([]() {
                 auto* timer = RE::BSTimer::GetSingleton();
                 if (timer) {
                     timer->SetGlobalTimeMultiplier(1.0f, true);
                     g_IsSlowed = false;
                 }
-                });
-            }).detach();
-    
+            });
+        });
     
     }
 }
@@ -353,12 +353,15 @@ void Sink::ScheduleSinkRegistration(RE::Actor* actor, int attempts)
         SKSE::log::critical("[Actor3DLoadEventHandler] Desistindo após {} tentativas para o ator {:08X}.", attempts, actor->GetFormID());
         return;
     }
-
-    std::thread([actor, attempts]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-        SKSE::GetTaskInterface()->AddTask([actor, attempts]() {
-            if (!actor) return;
+    
+    auto actorHandle = actor->CreateRefHandle();
+    
+    Utils::DelayedDispatcher::Get().PostDelayed(std::chrono::milliseconds(100), [actorHandle, attempts] {
+        SKSE::GetTaskInterface()->AddTask([actorHandle, attempts]() {
+            if (!actorHandle) return;
+            if (!actorHandle.get()) return;
+            
+            auto actor = actorHandle.get();
 
             RE::BSTSmartPointer<RE::BSAnimationGraphManager> graphManager;
             actor->GetAnimationGraphManager(graphManager);
@@ -367,18 +370,18 @@ void Sink::ScheduleSinkRegistration(RE::Actor* actor, int attempts)
                 SKSE::log::info("[Actor3DLoadEventHandler] Graph encontrado para {:08X}. Reconectando...", actor->GetFormID());
 
                 if (!actor->IsPlayerRef()) {
-                    Sink::NpcCombatTracker::UnregisterSink(actor);
-                    Sink::NpcCombatTracker::RegisterSink(actor);
+                    Sink::NpcCombatTracker::UnregisterSink(actor.get());
+                    Sink::NpcCombatTracker::RegisterSink(actor.get());
                     SKSE::log::info("[Actor3DLoadEventHandler] Sink de NPC reconectada (via CombatTracker).");
 
                 }
             }
             else {
                 // Graph ainda nulo, tenta de novo
-                ScheduleSinkRegistration(actor, attempts + 1);
+                ScheduleSinkRegistration(actor.get(), attempts + 1);
             }
-            });
-        }).detach();
+        });
+    });
 }
 
 RE::BSEventNotifyControl Sink::PC3DLoadEventHandler::ProcessEvent(const RE::TESObjectLoadedEvent* a_event, RE::BSTEventSource<RE::TESObjectLoadedEvent>*)
@@ -396,4 +399,3 @@ RE::BSEventNotifyControl Sink::PC3DLoadEventHandler::ProcessEvent(const RE::TESO
 
     return RE::BSEventNotifyControl::kContinue;
 }
-
