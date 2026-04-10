@@ -1,4 +1,4 @@
-#include "Hooks.h"
+﻿#include "Hooks.h"
 #include "Settings.h"
 
 void ApplyStagger(RE::Actor* a_target, float a_magnitude) {
@@ -18,9 +18,17 @@ void Hook_OnMeleeHit::processHit(RE::Actor* victim, RE::HitData& hitData)
         UnblockableSettings::powerAttacks :
         UnblockableSettings::normalAttacks;
     bool isUnblockable = false;
-    aggressor->GetGraphVariableBool("UnblockableAttackCMF", isUnblockable);
+    {
+        std::shared_lock lock(UnblockableManager::g_unblockableMutex);
+        auto it = UnblockableManager::g_unblockableStatus.find(aggressor->GetFormID());
+        if (it != UnblockableManager::g_unblockableStatus.end()) {
+            isUnblockable = it->second;
+        }
+    }
 
     if (isUnblockable) {
+        victim->NotifyAnimationGraph("HitByUnblockAtk");
+        aggressor->NotifyAnimationGraph("UnblockableHitCMF");
         if (hitData.flags.any(RE::HitData::Flag::kBlocked)) {
             hitData.flags.reset(RE::HitData::Flag::kBlocked);
             hitData.percentBlocked = 0.0f;

@@ -1,4 +1,4 @@
-#include "Events.h"
+﻿#include "Events.h"
 #include "Settings.h"
 #include "DelayedDispatcher.h"
 
@@ -137,7 +137,6 @@ RE::BSEventNotifyControl Sink::NpcCycleSink::ProcessEvent(const RE::BSAnimationG
     int isPower = actor->IsPowerAttacking();
 	bool isUnblockable = false;
 	bool didMath = false;
-    npc->GetGraphVariableBool("UnblockableAttackCMF", isUnblockable);
     npc->GetGraphVariableBool("UnblockableAttackCalcCMF", didMath);
 	auto player = RE::PlayerCharacter::GetSingleton();
     if (!isUnblockable && !didMath) {
@@ -151,22 +150,12 @@ RE::BSEventNotifyControl Sink::NpcCycleSink::ProcessEvent(const RE::BSAnimationG
 
         if (shouldTrigger) {
             npc->SetGraphVariableBool("UnblockableAttackCalcCMF", true);
-            if (UnblockableManager::CalculateUnblockableChance(npc, isPower)) {
-    //            RE::NiPoint3 origin;
-    //            RE::NiPoint3 direction;
-    //            npc->GetEyeVector(origin, direction, false); 
-
-    //            RE::NiPoint3 toPlayer = player->GetPosition() - origin;
-    //            toPlayer.Unitize(); 
-
-    //            float dotProduct = direction.Dot(toPlayer);
-				//bool unusedBool = false;
-    //            RE::NiPoint3 npcEyes = npc->CalculateLOSLocation(RE::ACTOR_LOS_LOCATION::kEye);
-    //            RE::NiPoint3 playerTorso = player->CalculateLOSLocation(RE::ACTOR_LOS_LOCATION::kTorso);
-
-    //            bool hasLOS = false;
-				//hasLOS = npc->HasLineOfSight(player, unusedBool);
-                
+            if (UnblockableManager::CalculateUnblockableChance(npc, isPower)) {   
+                npc->NotifyAnimationGraph("UnblockableHitStartCMF");
+                {
+                    std::unique_lock lock(UnblockableManager::g_unblockableMutex);
+                    UnblockableManager::g_unblockableStatus[formID] = true;
+                }
                 if (IsPlayerInDanger(npc,player)) {
                     auto& settings = isPower ? UnblockableSettings::powerAttacks : UnblockableSettings::normalAttacks;
                     if (settings.slowTimeEnabled) {
@@ -174,22 +163,17 @@ RE::BSEventNotifyControl Sink::NpcCycleSink::ProcessEvent(const RE::BSAnimationG
                     }
                 }
 
-                //if (hasLOS) {
-                //    auto& settings = isPower ? UnblockableSettings::powerAttacks : UnblockableSettings::normalAttacks;
-                //    if (settings.slowTimeEnabled) {
-                //        // Passa o valor inteiro de milissegundos configurado no menu
-                //        ApplySlowTime(settings.slowTimeDuration, settings.slowTimeMultiplier);
-                //    }
-                //}
-
-                npc->SetGraphVariableBool("UnblockableAttackCMF", true);
                 UnblockableManager::PlayUnblockableVisuals(npc, isPower);
             }
         }
     }    
     else if (eventName == "attackStop" || eventName == "CastOKStop") {
         npc->SetGraphVariableBool("UnblockableAttackCalcCMF", false);
-        npc->SetGraphVariableBool("UnblockableAttackCMF", false);
+        npc->NotifyAnimationGraph("UnblockableHitEndCMF");
+        {
+            std::unique_lock lock(UnblockableManager::g_unblockableMutex);
+            UnblockableManager::g_unblockableStatus[formID] = false;
+        }
     }
        
     return RE::BSEventNotifyControl::kContinue;
@@ -234,7 +218,7 @@ void UnblockableManager::PlayUnblockableVisuals(RE::Actor* a_actor,bool isPower)
     // --- Lógica de Som ---
     if (settings.soundEnabled) {
         auto sound = isPower ? Sink::UnblockHitPowerSound : Sink::UnblockHitSound;
-        a_actor->ApplyEffectShader(sound, -1.0f, nullptr, false, false);
+        a_actor->ApplyEffectShader(sound, 1.5f, nullptr, false, false);
 
     }
 

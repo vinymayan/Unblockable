@@ -41,13 +41,13 @@ void OnMessage(SKSE::MessagingInterface::Message* message) {
     if (message->type == SKSE::MessagingInterface::kNewGame || message->type == SKSE::MessagingInterface::kPostLoadGame) {
         RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink(Sink::NpcCombatTracker::GetSingleton());
         Sink::NpcCombatTracker::RegisterSinksForExistingCombatants();
-        RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESTriggerEvent>(MyTriggerSink2::GetSingleton());
-        auto eventHolder = RE::ScriptEventSourceHolder::GetSingleton();
+        //RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESTriggerEvent>(MyTriggerSink2::GetSingleton());
+        /*auto eventHolder = RE::ScriptEventSourceHolder::GetSingleton();
         if (eventHolder) {
             eventHolder->AddEventSink<RE::TESTriggerEnterEvent>(MyTriggerSink::GetSingleton());
            
             SKSE::log::info("Sink de evento registrado com sucesso.");
-        }
+        }*/
     }
 }
 
