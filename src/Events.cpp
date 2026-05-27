@@ -92,8 +92,6 @@ void Sink::NpcCombatTracker::RegisterSinksForExistingCombatants()
             // A função IsInCombat() nos diz se o ator já está em um estado de combate
             if (!actor->IsPlayerRef()) {
                 if (actor->IsInCombat()) {
-                    SKSE::log::info("[NpcCombatTracker] Ator '{}' ({:08X}) já está em combate. Registrando sink...",
-                        actor->GetName(), actor->GetFormID());
                     // Usamos a mesma função de registro que já existe!
                     RegisterSink(actor);
                 }
@@ -136,6 +134,7 @@ RE::BSEventNotifyControl Sink::NpcCycleSink::ProcessEvent(const RE::BSAnimationG
     auto npc = const_cast<RE::Actor*>(actor);
     int isPower = actor->IsPowerAttacking();
 	bool isUnblockable = false;
+    npc->GetGraphVariableBool("isUnblockableHit", isUnblockable);
 	bool didMath = false;
     npc->GetGraphVariableBool("UnblockableAttackCalcCMF", didMath);
 	auto player = RE::PlayerCharacter::GetSingleton();
@@ -152,30 +151,35 @@ RE::BSEventNotifyControl Sink::NpcCycleSink::ProcessEvent(const RE::BSAnimationG
             npc->SetGraphVariableBool("UnblockableAttackCalcCMF", true);
             if (UnblockableManager::CalculateUnblockableChance(npc, isPower)) {   
                 npc->NotifyAnimationGraph("UnblockableHitStartCMF");
-                {
-                    std::unique_lock lock(UnblockableManager::g_unblockableMutex);
-                    UnblockableManager::g_unblockableStatus[formID] = true;
-                }
-                if (IsPlayerInDanger(npc,player)) {
-                    auto& settings = isPower ? UnblockableSettings::powerAttacks : UnblockableSettings::normalAttacks;
-                    if (settings.slowTimeEnabled) {
-                        ApplySlowTime(settings.slowTimeDuration, settings.slowTimeMultiplier);
-                    }
-                }
-
-                UnblockableManager::PlayUnblockableVisuals(npc, isPower);
             }
         }
-    }    
-    else if (eventName == "attackStop" || eventName == "CastOKStop") {
-        npc->SetGraphVariableBool("UnblockableAttackCalcCMF", false);
-        npc->NotifyAnimationGraph("UnblockableHitEndCMF");
-        {
-            std::unique_lock lock(UnblockableManager::g_unblockableMutex);
-            UnblockableManager::g_unblockableStatus[formID] = false;
+    }   
+    else if (eventName == "UnblockableHitStartCMF") {
+        npc->SetGraphVariableBool("isUnblockableHit", true);
+        if (IsPlayerInDanger(npc, player)) {
+            auto& settings = isPower ? UnblockableSettings::powerAttacks : UnblockableSettings::normalAttacks;
+            if (settings.slowTimeEnabled) {
+                ApplySlowTime(settings.slowTimeDuration, settings.slowTimeMultiplier);
+            }
+        }
+        UnblockableManager::PlayUnblockableVisuals(npc, isPower);
+    }
+    else if (eventName == "preHitFrame" && isUnblockable) {
+        auto& settings = isPower ? UnblockableSettings::powerAttacks : UnblockableSettings::normalAttacks;
+        if (settings.magnetismEnabled) {
+            npc->NotifyAnimationGraph("SnapToTargetCMF");
         }
     }
-       
+    else if (eventName == "UndodgeableHitEndCMF") {
+        npc->SetGraphVariableBool("UnblockableAttackCalcCMF", false);
+    }
+    else if (eventName == "attackStop" || eventName == "CastOKStop") {
+        npc->SetGraphVariableBool("UnblockableAttackCalcCMF", false);
+        if (isUnblockable) {
+            npc->NotifyAnimationGraph("UnblockableHitEndCMF");
+        }
+    }
+    
     return RE::BSEventNotifyControl::kContinue;
 }
 

@@ -19,6 +19,7 @@ void UnblockableSettings::SaveSettingsInternal(rapidjson::Document& doc, const c
     doc.AddMember(rapidjson::Value((p + "SlowTimeEnabled").c_str(), allocator).Move(), s.slowTimeEnabled, allocator);
     doc.AddMember(rapidjson::Value((p + "SlowTimeMult").c_str(), allocator).Move(), s.slowTimeMultiplier, allocator);
     doc.AddMember(rapidjson::Value((p + "SlowTimeDur").c_str(), allocator).Move(), s.slowTimeDuration, allocator);
+    doc.AddMember(rapidjson::Value((p + "Magnetism").c_str(), allocator).Move(), s.magnetismEnabled, allocator);
 }
 
 void UnblockableSettings::LoadSettingsInternal(rapidjson::Document& doc, const char* prefix, ChanceSettings& s) {
@@ -38,6 +39,7 @@ void UnblockableSettings::LoadSettingsInternal(rapidjson::Document& doc, const c
     if (doc.HasMember((p + "SlowTimeEnabled").c_str())) s.slowTimeEnabled = doc[(p + "SlowTimeEnabled").c_str()].GetBool();
     if (doc.HasMember((p + "SlowTimeMult").c_str())) s.slowTimeMultiplier = doc[(p + "SlowTimeMult").c_str()].GetFloat();
     if (doc.HasMember((p + "SlowTimeDur").c_str())) s.slowTimeDuration = doc[(p + "SlowTimeDur").c_str()].GetInt();
+    if (doc.HasMember((p + "Magnetism").c_str())) s.magnetismEnabled = doc[(p + "Magnetism").c_str()].GetBool();
 }
 
 void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, bool& changed) {
@@ -53,7 +55,7 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
                 ImGuiMCP::SetNextItemWidth(250.0f);
                 if (ImGuiMCP::SliderFloat((std::string("Shader Duration (s)##") + label).c_str(), &s.effectShaderDuration, 0.1f, 10.0f, "%.1f")) changed = true;
                 ImGuiMCP::SameLine();
-                ImGuiMCP::SetNextItemWidth(70.0f);
+                ImGuiMCP::SetNextItemWidth(90.0f);
                 if (ImGuiMCP::InputFloat((std::string("##ShaderDurPrecise") + label).c_str(), &s.effectShaderDuration, 0.0f, 0.0f, "%.1f")) {
                     s.effectShaderDuration = std::clamp(s.effectShaderDuration, 0.1f, 60.0f); 
                     changed = true;
@@ -63,13 +65,17 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
             }
             if (ImGuiMCP::Checkbox((std::string("Sound Effects##") + label).c_str(), &s.soundEnabled)) changed = true;
             if (ImGuiMCP::Checkbox((std::string("Stagger on Hit##") + label).c_str(), &s.staggerEnabled)) changed = true;
+            if (ImGuiMCP::Checkbox((std::string("Attack Magnetism##") + label).c_str(), &s.magnetismEnabled)) changed = true;
+            if (ImGuiMCP::IsItemHovered()) {
+                ImGuiMCP::SetTooltip("Only works if TCB is installed.");
+            }
             ImGuiMCP::Indent();
 
             // --- Base Weight ---
             ImGuiMCP::SetNextItemWidth(250.0f);
             if (ImGuiMCP::SliderFloat((std::string("Base Weight##") + label).c_str(), &s.baseChance, 0.0f, 100.0f, "%.1f")) changed = true;
             ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(70.0f);
+            ImGuiMCP::SetNextItemWidth(90.0f);
             if (ImGuiMCP::InputFloat((std::string("##BasePrecise") + label).c_str(), &s.baseChance, 0.0f, 0.0f, "%.1f")) {
                 s.baseChance = std::clamp(s.baseChance, 0.0f, 500.0f);
                 changed = true;
@@ -79,7 +85,7 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
             ImGuiMCP::SetNextItemWidth(250.0f);
             if (ImGuiMCP::SliderFloat((std::string("Missing Health Mult##") + label).c_str(), &s.healthMult, 0.0f, 100.0f, "%.2f")) changed = true;
             ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(70.0f);
+            ImGuiMCP::SetNextItemWidth(90.0f);
             if (ImGuiMCP::InputFloat((std::string("##HealthPrecise") + label).c_str(), &s.healthMult, 0.0f, 0.0f, "%.2f")) {
                 s.healthMult = std::clamp(s.healthMult, 0.0f, 500.0f);
                 changed = true;
@@ -89,7 +95,7 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
             ImGuiMCP::SetNextItemWidth(250.0f);
             if (ImGuiMCP::SliderFloat((std::string("Aggression Mult##") + label).c_str(), &s.aggressionMult, 0.0f, 50.0f, "%.1f")) changed = true;
             ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(70.0f);
+            ImGuiMCP::SetNextItemWidth(90.0f);
             if (ImGuiMCP::InputFloat((std::string("##AggroPrecise") + label).c_str(), &s.aggressionMult, 0.0f, 0.0f, "%.1f")) {
                 s.aggressionMult = std::clamp(s.aggressionMult, 0.0f, 500.0f);
                 changed = true;
@@ -99,7 +105,7 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
             ImGuiMCP::SetNextItemWidth(250.0f);
             if (ImGuiMCP::SliderFloat((std::string("Skill Mult##") + label).c_str(), &s.skillMult, 0.0f, 5.0f, "%.2f")) changed = true;
             ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(70.0f);
+            ImGuiMCP::SetNextItemWidth(90.0f);
             if (ImGuiMCP::InputFloat((std::string("##SkillPrecise") + label).c_str(), &s.skillMult, 0.0f, 0.0f, "%.2f")) {
                 s.skillMult = std::clamp(s.skillMult, 0.0f, 100.0f);
                 changed = true;
@@ -109,7 +115,7 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
             ImGuiMCP::SetNextItemWidth(250.0f);
             if (ImGuiMCP::SliderFloat((std::string("Global Difficulty##") + label).c_str(), &s.globalDifficulty, 1.0f, 1000.0f, "%.1f")) changed = true;
             ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(70.0f);
+            ImGuiMCP::SetNextItemWidth(90.0f);
             if (ImGuiMCP::InputFloat((std::string("##DiffPrecise") + label).c_str(), &s.globalDifficulty, 0.0f, 0.0f, "%.1f")) {
                 s.globalDifficulty = std::clamp(s.globalDifficulty, 1.0f, 5000.0f);
                 changed = true;

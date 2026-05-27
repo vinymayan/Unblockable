@@ -1,5 +1,15 @@
-#pragma once
+﻿#pragma once
 #include "Events.h"
+
+namespace RE
+{
+	namespace Offset
+	{
+		typedef void(_fastcall* _destroyProjectile)(RE::Projectile* a_projectile);
+		inline static REL::Relocation<_destroyProjectile> destroyProjectile{ RELOCATION_ID(42930, 44110) };
+
+	}
+}
 
 class Hook_OnMeleeHit
 {
@@ -20,3 +30,23 @@ private:
 	static inline REL::Relocation<decltype(processHit)> _ProcessHit;  
 };
 
+class Hook_OnProjectileCollision
+{
+public:
+	static void install()
+	{
+		REL::Relocation<std::uintptr_t> arrowProjectileVtbl{ RE::VTABLE_ArrowProjectile[0] };
+		REL::Relocation<std::uintptr_t> missileProjectileVtbl{ RE::VTABLE_MissileProjectile[0] };
+
+		_arrowCollission = arrowProjectileVtbl.write_vfunc(190, OnArrowCollision);
+		_missileCollission = missileProjectileVtbl.write_vfunc(190, OnMissileCollision);
+		logger::info("hook:OnProjectileCollision");
+	};
+
+private:
+	static void OnArrowCollision(RE::Projectile* a_this, RE::hkpAllCdPointCollector* a_AllCdPointCollector);
+
+	static void OnMissileCollision(RE::Projectile* a_this, RE::hkpAllCdPointCollector* a_AllCdPointCollector);
+	static inline REL::Relocation<decltype(OnArrowCollision)> _arrowCollission;
+	static inline REL::Relocation<decltype(OnMissileCollision)> _missileCollission;
+};

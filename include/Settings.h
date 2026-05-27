@@ -33,6 +33,7 @@ namespace UnblockableSettings {
         float globalDifficulty = 250.0f;
         bool staggerEnabled = false;    
         float staggerMagnitude = 0.5f; 
+        bool magnetismEnabled = false;
     };
 
     // Variáveis Globais
