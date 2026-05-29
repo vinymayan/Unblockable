@@ -1,16 +1,77 @@
 ﻿#include "Settings.h"
+#include "Manager.h"
+#include <algorithm>
 
-const char* UnblockPath = "Data/SKSE/Plugins/UnblockableHits.json";
+const char* Old_UnblockPath = "Data/SKSE/Plugins/UnblockableHits.json";
+const char* UnblockPath = "Data/SKSE/Plugins/Unblock/Settings.json";
+const char* LANG_PATH = "Data/SKSE/Plugins/Unblock/Language.json";
+static std::unordered_map<std::string, std::string> LangMap;
+
+void UnblockableSettings::LoadLanguage() {
+    LangMap.clear();
+    std::ifstream file(LANG_PATH, std::ios::binary);
+    if (!file.is_open()) {
+        SKSE::log::warn("Não foi possível carregar o arquivo Language.json. Usando textos padrões.");
+        return;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string jsonStr = buffer.str();
+    file.close();
+
+    if (jsonStr.size() >= 3 && (unsigned char)jsonStr[0] == 0xEF && (unsigned char)jsonStr[1] == 0xBB && (unsigned char)jsonStr[2] == 0xBF) {
+        jsonStr.erase(0, 3);
+    }
+
+    rapidjson::Document doc;
+    doc.Parse(jsonStr.c_str());
+    if (doc.HasParseError()) return;
+
+    if (doc.IsObject()) {
+        for (auto itr = doc.MemberBegin(); itr != doc.MemberEnd(); ++itr) {
+            if (itr->value.IsObject()) {
+                std::string category = itr->name.GetString();
+                for (auto jtr = itr->value.MemberBegin(); jtr != itr->value.MemberEnd(); ++jtr) {
+                    if (jtr->value.IsString()) {
+                        LangMap[category + "." + jtr->name.GetString()] = jtr->value.GetString();
+                    }
+                }
+            }
+            else if (itr->value.IsString()) {
+                LangMap[itr->name.GetString()] = itr->value.GetString();
+            }
+        }
+    }
+}
+
+const char* UnblockableSettings::GetLoc(const std::string& key, const char* defaultVal) {
+    auto it = LangMap.find(key);
+    if (it != LangMap.end()) return it->second.c_str();
+    return defaultVal;
+}
+
+inline std::string ToLower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+    return s;
+}
+
+inline int GetIndexFromID(int id, const int* idArray, int arraySize) {
+    for (int i = 0; i < arraySize; i++) {
+        if (idArray[i] == id) return i;
+    }
+    return 0;
+}
 
 void UnblockableSettings::SaveSettingsInternal(rapidjson::Document& doc, const char* prefix, ChanceSettings& s, rapidjson::Document::AllocatorType& allocator) {
     std::string p = prefix;
     doc.AddMember(rapidjson::Value((p + "Enabled").c_str(), allocator).Move(), s.enabled, allocator);
     doc.AddMember(rapidjson::Value((p + "Visuals").c_str(), allocator).Move(), s.visualsEnabled, allocator);
     doc.AddMember(rapidjson::Value((p + "EffectShaderEnabled").c_str(), allocator).Move(), s.effectShaderEnabled, allocator);
-    doc.AddMember(rapidjson::Value((p + "EffectShaderDur").c_str(), allocator).Move(), s.effectShaderDuration, allocator); 
+    doc.AddMember(rapidjson::Value((p + "EffectShaderDur").c_str(), allocator).Move(), s.effectShaderDuration, allocator);
     doc.AddMember(rapidjson::Value((p + "Sound").c_str(), allocator).Move(), s.soundEnabled, allocator);
-    doc.AddMember(rapidjson::Value((p + "StaggerEnabled").c_str(), allocator).Move(), s.staggerEnabled, allocator); // Salvar Stagger
-    doc.AddMember(rapidjson::Value((p + "StaggerMag").c_str(), allocator).Move(), s.staggerMagnitude, allocator);     // Salvar Magnitude
+    doc.AddMember(rapidjson::Value((p + "StaggerEnabled").c_str(), allocator).Move(), s.staggerEnabled, allocator);
+    doc.AddMember(rapidjson::Value((p + "StaggerMag").c_str(), allocator).Move(), s.staggerMagnitude, allocator);
     doc.AddMember(rapidjson::Value((p + "BaseWeight").c_str(), allocator).Move(), s.baseChance, allocator);
     doc.AddMember(rapidjson::Value((p + "HealthMult").c_str(), allocator).Move(), s.healthMult, allocator);
     doc.AddMember(rapidjson::Value((p + "AggroMult").c_str(), allocator).Move(), s.aggressionMult, allocator);
@@ -27,10 +88,10 @@ void UnblockableSettings::LoadSettingsInternal(rapidjson::Document& doc, const c
     if (doc.HasMember((p + "Enabled").c_str())) s.enabled = doc[(p + "Enabled").c_str()].GetBool();
     if (doc.HasMember((p + "Visuals").c_str())) s.visualsEnabled = doc[(p + "Visuals").c_str()].GetBool();
     if (doc.HasMember((p + "EffectShaderEnabled").c_str())) s.effectShaderEnabled = doc[(p + "EffectShaderEnabled").c_str()].GetBool();
-    if (doc.HasMember((p + "EffectShaderDur").c_str())) s.effectShaderDuration = doc[(p + "EffectShaderDur").c_str()].GetFloat(); 
+    if (doc.HasMember((p + "EffectShaderDur").c_str())) s.effectShaderDuration = doc[(p + "EffectShaderDur").c_str()].GetFloat();
     if (doc.HasMember((p + "Sound").c_str())) s.soundEnabled = doc[(p + "Sound").c_str()].GetBool();
-    if (doc.HasMember((p + "StaggerEnabled").c_str())) s.staggerEnabled = doc[(p + "StaggerEnabled").c_str()].GetBool(); // Carregar Stagger
-    if (doc.HasMember((p + "StaggerMag").c_str())) s.staggerMagnitude = doc[(p + "StaggerMag").c_str()].GetFloat();      // Carregar Magnitude
+    if (doc.HasMember((p + "StaggerEnabled").c_str())) s.staggerEnabled = doc[(p + "StaggerEnabled").c_str()].GetBool();
+    if (doc.HasMember((p + "StaggerMag").c_str())) s.staggerMagnitude = doc[(p + "StaggerMag").c_str()].GetFloat();
     if (doc.HasMember((p + "BaseWeight").c_str())) s.baseChance = doc[(p + "BaseWeight").c_str()].GetFloat();
     if (doc.HasMember((p + "HealthMult").c_str())) s.healthMult = doc[(p + "HealthMult").c_str()].GetFloat();
     if (doc.HasMember((p + "AggroMult").c_str())) s.aggressionMult = doc[(p + "AggroMult").c_str()].GetFloat();
@@ -42,38 +103,265 @@ void UnblockableSettings::LoadSettingsInternal(rapidjson::Document& doc, const c
     if (doc.HasMember((p + "Magnetism").c_str())) s.magnetismEnabled = doc[(p + "Magnetism").c_str()].GetBool();
 }
 
+bool UnblockableSettings::DrawDropdown(const char* label, const std::string& category, RE::FormID& current_form_id, float customWidth) {
+    bool changed = false;
+    const auto& fullList = Manager::GetSingleton()->GetList(category);
+    if (fullList.empty()) return false;
+
+    std::vector<const char*> comboItems;
+    std::vector<int> mapToFull;
+
+    comboItems.push_back("None");
+    mapToFull.push_back(-1);
+
+    int localSelection = 0;
+    for (size_t i = 0; i < fullList.size(); ++i) {
+        comboItems.push_back(fullList[i].cachedDisplayName.c_str());
+        mapToFull.push_back(static_cast<int>(i));
+        if (fullList[i].formID == current_form_id) {
+            localSelection = static_cast<int>(i) + 1;
+        }
+    }
+
+    ImGuiMCP::PushID(label);
+    std::string displayLabel = label;
+    size_t hashPos = displayLabel.find("##");
+    if (hashPos != std::string::npos) displayLabel = displayLabel.substr(0, hashPos);
+
+    ImGuiMCP::Text("%s:", displayLabel.c_str());
+    ImGuiMCP::SameLine();
+
+    if (customWidth > 0.0f) ImGuiMCP::SetNextItemWidth(customWidth);
+    const char* previewValue = comboItems[localSelection];
+
+    if (ImGuiMCP::BeginCombo("##drop", previewValue)) {
+        static std::map<std::string, std::string> searchBuffers;
+        char searchBuf[256] = "";
+        if (searchBuffers.contains(label)) strcpy_s(searchBuf, searchBuffers[label].c_str());
+
+        ImGuiMCP::SetNextItemWidth(-1.0f);
+        if (ImGuiMCP::InputText("##busca", searchBuf, sizeof(searchBuf))) {
+            searchBuffers[label] = searchBuf;
+        }
+        ImGuiMCP::Separator();
+
+        std::string searchStr = searchBuf;
+        std::transform(searchStr.begin(), searchStr.end(), searchStr.begin(), [](unsigned char c) { return std::tolower(c); });
+
+        ImGuiMCP::BeginChild("##scroll", { 0, 200 }, false);
+        for (int i = 0; i < comboItems.size(); i++) {
+            std::string itemLower = comboItems[i];
+            std::transform(itemLower.begin(), itemLower.end(), itemLower.begin(), [](unsigned char c) { return std::tolower(c); });
+
+            if (searchStr.empty() || itemLower.find(searchStr) != std::string::npos) {
+                bool isSelected = (localSelection == i);
+                if (ImGuiMCP::Selectable(comboItems[i], isSelected)) {
+                    localSelection = i;
+                    int originalIndex = mapToFull[localSelection];
+
+                    if (originalIndex == -1) current_form_id = 0;
+                    else current_form_id = fullList[originalIndex].formID;
+
+                    searchBuffers[label] = "";
+                    changed = true;
+                }
+                if (isSelected) ImGuiMCP::SetItemDefaultFocus();
+            }
+        }
+        ImGuiMCP::EndChild();
+        ImGuiMCP::EndCombo();
+    }
+    ImGuiMCP::PopID();
+    return changed;
+}
+
+void UnblockableSettings::SaveRule(const UnblockableRule& rule, bool isPower) {
+    std::string dir = isPower ? "Data/SKSE/Plugins/Unblock/Rules/Power/" : "Data/SKSE/Plugins/Unblock/Rules/Normal/";
+
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        logger::error("[Unblockable Hits] Error creating rules directory: {} -> {}", dir, ec.message());
+        return;
+    }
+
+    std::string filepath = dir + rule.ruleName + ".json";
+    rapidjson::Document doc;
+    doc.SetObject();
+    auto& alloc = doc.GetAllocator();
+
+    rapidjson::Value rName; rName.SetString(rule.ruleName.c_str(), alloc);
+    doc.AddMember("ruleName", rName, alloc);
+
+    auto perkForm = RE::TESForm::LookupByID(rule.perkID);
+    std::string perkStr = FormUtil::NormalizeFormID(perkForm);
+    rapidjson::Value pStr; pStr.SetString(perkStr.c_str(), alloc);
+    doc.AddMember("perk", pStr, alloc);
+
+    SaveSettingsInternal(doc, "", const_cast<ChanceSettings&>(rule.settings), alloc);
+
+    FILE* fp = nullptr;
+    fopen_s(&fp, filepath.c_str(), "wb");
+    if (fp) {
+        char writeBuffer[65536];
+        rapidjson::FileWriteStream os(fp, writeBuffer, sizeof(writeBuffer));
+        rapidjson::Writer<rapidjson::FileWriteStream> writer(os);
+        doc.Accept(writer);
+        fclose(fp);
+    }
+}
+
+void UnblockableSettings::LoadRules() {
+    normalRules.clear();
+    powerRules.clear();
+
+    std::string normalDir = "Data/SKSE/Plugins/Unblock/Rules/Normal/";
+    std::string powerDir = "Data/SKSE/Plugins/Unblock/Rules/Power/";
+
+    auto loadFromDir = [](const std::string& dir, std::vector<UnblockableRule>& rulesList) {
+        if (!std::filesystem::exists(dir)) return;
+        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+            if (entry.path().extension() == ".json") {
+                FILE* fp = nullptr;
+                fopen_s(&fp, entry.path().string().c_str(), "rb");
+                if (!fp) continue;
+
+                char readBuffer[65536];
+                rapidjson::FileReadStream is(fp, readBuffer, sizeof(readBuffer));
+                rapidjson::Document doc;
+                doc.ParseStream(is);
+                fclose(fp);
+
+                if (doc.HasParseError() || !doc.IsObject()) continue;
+
+                UnblockableRule rule;
+                if (doc.HasMember("ruleName")) rule.ruleName = doc["ruleName"].GetString();
+
+                if (doc.HasMember("perk")) {
+                    std::string perkStr = doc["perk"].GetString();
+                    rule.perkID = FormUtil::FormIDFromString(perkStr);
+                }
+
+                LoadSettingsInternal(doc, "", rule.settings);
+                rulesList.push_back(rule);
+            }
+        }
+        };
+
+    loadFromDir(normalDir, normalRules);
+    loadFromDir(powerDir, powerRules);
+}
+
+void UnblockableSettings::DrawRulesUI(const char* label, std::vector<UnblockableRule>& rules, bool isPower, bool& changed) {
+    ImGuiMCP::Spacing();
+    ImGuiMCP::Separator();
+    ImGuiMCP::TextColored({ 0.4f, 1.0f, 0.4f, 1.0f }, "%s %s", label, GetLoc("menu.rules_header", "Rules (By Perk)"));
+
+    if (ImGuiMCP::Button((std::string("+ ") + GetLoc("menu.add_rule", "Add Rule") + "##" + label).c_str())) {
+        UnblockableRule newRule;
+        newRule.ruleName = "New Rule " + std::to_string(rules.size() + 1);
+        rules.push_back(newRule);
+        changed = true;
+    }
+
+    ImGuiMCP::Spacing();
+
+    for (size_t i = 0; i < rules.size(); ) {
+        auto& rule = rules[i];
+        ImGuiMCP::PushID(static_cast<int>(i));
+
+        if (ImGuiMCP::CollapsingHeader(rule.ruleName.c_str())) {
+            ImGuiMCP::Indent();
+
+            char nameBuf[128];
+            strcpy_s(nameBuf, rule.ruleName.c_str());
+            if (ImGuiMCP::InputText(GetLoc("menu.rule_name", "Rule Name"), nameBuf, sizeof(nameBuf))) {
+                std::string newName(nameBuf);
+                if (newName != rule.ruleName && !newName.empty()) {
+                    std::string oldDir = isPower ? "Data/SKSE/Plugins/Unblock/Rules/Power/" : "Data/SKSE/Plugins/Unblock/Rules/Normal/";
+                    std::string oldPath = oldDir + rule.ruleName + ".json";
+                    if (std::filesystem::exists(oldPath)) std::filesystem::remove(oldPath);
+                    rule.ruleName = newName;
+                    changed = true;
+                }
+            }
+
+            RE::FormID prevPerk = rule.perkID;
+            std::string perkLabel = std::string(GetLoc("menu.target_perk", "Target Perk")) + "##" + std::to_string(i);
+            if (DrawDropdown(perkLabel.c_str(), "Perk", rule.perkID, 300.0f)) {
+                bool conflict = false;
+                if (rule.perkID != 0) {
+                    for (size_t j = 0; j < rules.size(); j++) {
+                        if (i != j && rules[j].perkID == rule.perkID) {
+                            conflict = true;
+                            break;
+                        }
+                    }
+                }
+                if (conflict) {
+                    rule.perkID = prevPerk;
+                }
+                else {
+                    changed = true;
+                }
+            }
+
+            ImGuiMCP::Separator();
+            bool ruleChanged = false;
+            DrawChanceUI((rule.ruleName + " " + GetLoc("menu.settings", "Settings")).c_str(), rule.settings, ruleChanged);
+            if (ruleChanged) changed = true;
+            ImGuiMCP::Separator();
+
+            ImGuiMCP::Spacing();
+            if (ImGuiMCP::Button(GetLoc("menu.remove_rule", "Remove Rule"), { 150, 0 })) {
+                std::string dir = isPower ? "Data/SKSE/Plugins/Unblock/Rules/Power/" : "Data/SKSE/Plugins/Unblock/Rules/Normal/";
+                std::string path = dir + rule.ruleName + ".json";
+                if (std::filesystem::exists(path)) std::filesystem::remove(path);
+                rules.erase(rules.begin() + i);
+                changed = true;
+                ImGuiMCP::PopID();
+                continue;
+            }
+
+            ImGuiMCP::Unindent();
+        }
+        ImGuiMCP::PopID();
+        i++;
+    }
+}
+
 void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, bool& changed) {
     if (ImGuiMCP::CollapsingHeader(label, ImGuiMCP::ImGuiTreeNodeFlags_DefaultOpen)) {
-        if (ImGuiMCP::Checkbox((std::string("Enabled##") + label).c_str(), &s.enabled)) changed = true;
+        if (ImGuiMCP::Checkbox((std::string(GetLoc("menu.enabled", "Enabled")) + "##" + label).c_str(), &s.enabled)) changed = true;
         if (s.enabled) {
             ImGuiMCP::Indent();
-            if (ImGuiMCP::Checkbox((std::string("Visual Effects##") + label).c_str(), &s.visualsEnabled)) changed = true;
-            if (ImGuiMCP::Checkbox((std::string("Effect Shader##") + label).c_str(), &s.effectShaderEnabled)) changed = true;
+            if (ImGuiMCP::Checkbox((std::string(GetLoc("menu.visual_effects", "Visual Effects")) + "##" + label).c_str(), &s.visualsEnabled)) changed = true;
+            if (ImGuiMCP::Checkbox((std::string(GetLoc("menu.effect_shader", "Effect Shader")) + "##" + label).c_str(), &s.effectShaderEnabled)) changed = true;
             if (s.effectShaderEnabled) {
                 ImGuiMCP::Indent();
 
                 ImGuiMCP::SetNextItemWidth(250.0f);
-                if (ImGuiMCP::SliderFloat((std::string("Shader Duration (s)##") + label).c_str(), &s.effectShaderDuration, 0.1f, 10.0f, "%.1f")) changed = true;
+                if (ImGuiMCP::SliderFloat((std::string(GetLoc("menu.shader_duration", "Shader Duration (s)")) + "##" + label).c_str(), &s.effectShaderDuration, 0.1f, 10.0f, "%.1f")) changed = true;
                 ImGuiMCP::SameLine();
                 ImGuiMCP::SetNextItemWidth(90.0f);
                 if (ImGuiMCP::InputFloat((std::string("##ShaderDurPrecise") + label).c_str(), &s.effectShaderDuration, 0.0f, 0.0f, "%.1f")) {
-                    s.effectShaderDuration = std::clamp(s.effectShaderDuration, 0.1f, 60.0f); 
+                    s.effectShaderDuration = std::clamp(s.effectShaderDuration, 0.1f, 60.0f);
                     changed = true;
                 }
 
                 ImGuiMCP::Unindent();
             }
-            if (ImGuiMCP::Checkbox((std::string("Sound Effects##") + label).c_str(), &s.soundEnabled)) changed = true;
-            if (ImGuiMCP::Checkbox((std::string("Stagger on Hit##") + label).c_str(), &s.staggerEnabled)) changed = true;
-            if (ImGuiMCP::Checkbox((std::string("Attack Magnetism##") + label).c_str(), &s.magnetismEnabled)) changed = true;
+            if (ImGuiMCP::Checkbox((std::string(GetLoc("menu.sound_effects", "Sound Effects")) + "##" + label).c_str(), &s.soundEnabled)) changed = true;
+            if (ImGuiMCP::Checkbox((std::string(GetLoc("menu.stagger_hit", "Stagger on Hit")) + "##" + label).c_str(), &s.staggerEnabled)) changed = true;
+            if (ImGuiMCP::Checkbox((std::string(GetLoc("menu.magnetism", "Attack Magnetism")) + "##" + label).c_str(), &s.magnetismEnabled)) changed = true;
             if (ImGuiMCP::IsItemHovered()) {
-                ImGuiMCP::SetTooltip("Only works if TCB is installed.");
+                ImGuiMCP::SetTooltip(GetLoc("menu.magnetism_tooltip", "Only works if TCB is installed."));
             }
             ImGuiMCP::Indent();
 
             // --- Base Weight ---
             ImGuiMCP::SetNextItemWidth(250.0f);
-            if (ImGuiMCP::SliderFloat((std::string("Base Weight##") + label).c_str(), &s.baseChance, 0.0f, 100.0f, "%.1f")) changed = true;
+            if (ImGuiMCP::SliderFloat((std::string(GetLoc("menu.base_weight", "Base Weight")) + "##" + label).c_str(), &s.baseChance, 0.0f, 100.0f, "%.1f")) changed = true;
             ImGuiMCP::SameLine();
             ImGuiMCP::SetNextItemWidth(90.0f);
             if (ImGuiMCP::InputFloat((std::string("##BasePrecise") + label).c_str(), &s.baseChance, 0.0f, 0.0f, "%.1f")) {
@@ -83,7 +371,7 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
 
             // --- Health Mult ---
             ImGuiMCP::SetNextItemWidth(250.0f);
-            if (ImGuiMCP::SliderFloat((std::string("Missing Health Mult##") + label).c_str(), &s.healthMult, 0.0f, 100.0f, "%.2f")) changed = true;
+            if (ImGuiMCP::SliderFloat((std::string(GetLoc("menu.health_mult", "Missing Health Mult")) + "##" + label).c_str(), &s.healthMult, 0.0f, 100.0f, "%.2f")) changed = true;
             ImGuiMCP::SameLine();
             ImGuiMCP::SetNextItemWidth(90.0f);
             if (ImGuiMCP::InputFloat((std::string("##HealthPrecise") + label).c_str(), &s.healthMult, 0.0f, 0.0f, "%.2f")) {
@@ -93,7 +381,7 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
 
             // --- Aggression Mult ---
             ImGuiMCP::SetNextItemWidth(250.0f);
-            if (ImGuiMCP::SliderFloat((std::string("Aggression Mult##") + label).c_str(), &s.aggressionMult, 0.0f, 50.0f, "%.1f")) changed = true;
+            if (ImGuiMCP::SliderFloat((std::string(GetLoc("menu.aggro_mult", "Aggression Mult")) + "##" + label).c_str(), &s.aggressionMult, 0.0f, 50.0f, "%.1f")) changed = true;
             ImGuiMCP::SameLine();
             ImGuiMCP::SetNextItemWidth(90.0f);
             if (ImGuiMCP::InputFloat((std::string("##AggroPrecise") + label).c_str(), &s.aggressionMult, 0.0f, 0.0f, "%.1f")) {
@@ -103,7 +391,7 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
 
             // --- Skill Mult ---
             ImGuiMCP::SetNextItemWidth(250.0f);
-            if (ImGuiMCP::SliderFloat((std::string("Skill Mult##") + label).c_str(), &s.skillMult, 0.0f, 5.0f, "%.2f")) changed = true;
+            if (ImGuiMCP::SliderFloat((std::string(GetLoc("menu.skill_mult", "Skill Mult")) + "##" + label).c_str(), &s.skillMult, 0.0f, 5.0f, "%.2f")) changed = true;
             ImGuiMCP::SameLine();
             ImGuiMCP::SetNextItemWidth(90.0f);
             if (ImGuiMCP::InputFloat((std::string("##SkillPrecise") + label).c_str(), &s.skillMult, 0.0f, 0.0f, "%.2f")) {
@@ -113,7 +401,7 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
 
             // --- Global Difficulty ---
             ImGuiMCP::SetNextItemWidth(250.0f);
-            if (ImGuiMCP::SliderFloat((std::string("Global Difficulty##") + label).c_str(), &s.globalDifficulty, 1.0f, 1000.0f, "%.1f")) changed = true;
+            if (ImGuiMCP::SliderFloat((std::string(GetLoc("menu.difficulty", "Global Difficulty")) + "##" + label).c_str(), &s.globalDifficulty, 1.0f, 1000.0f, "%.1f")) changed = true;
             ImGuiMCP::SameLine();
             ImGuiMCP::SetNextItemWidth(90.0f);
             if (ImGuiMCP::InputFloat((std::string("##DiffPrecise") + label).c_str(), &s.globalDifficulty, 0.0f, 0.0f, "%.1f")) {
@@ -121,43 +409,41 @@ void UnblockableSettings::DrawChanceUI(const char* label, ChanceSettings& s, boo
                 changed = true;
             }
 
-            if (ImGuiMCP::Checkbox((std::string("Slow Time on Trigger##") + label).c_str(), &s.slowTimeEnabled)) changed = true;
+            if (ImGuiMCP::Checkbox((std::string(GetLoc("menu.slow_time", "Slow Time on Trigger")) + "##" + label).c_str(), &s.slowTimeEnabled)) changed = true;
             if (s.slowTimeEnabled) {
                 ImGuiMCP::Indent();
-
                 ImGuiMCP::SetNextItemWidth(200.0f);
-                if (ImGuiMCP::SliderFloat((std::string("Time Multiplier##") + label).c_str(), &s.slowTimeMultiplier, 0.05f, 1.0f, "%.2f")) changed = true;
-
+                if (ImGuiMCP::SliderFloat((std::string(GetLoc("menu.time_mult", "Time Multiplier")) + "##" + label).c_str(), &s.slowTimeMultiplier, 0.05f, 1.0f, "%.2f")) changed = true;
                 ImGuiMCP::SetNextItemWidth(200.0f);
-                if (ImGuiMCP::SliderInt((std::string("Duration (ms)##") + label).c_str(), &s.slowTimeDuration, 100, 5000)) changed = true; // Slider de 100ms a 5000ms
+                if (ImGuiMCP::SliderInt((std::string(GetLoc("menu.duration_ms", "Duration (ms)")) + "##" + label).c_str(), &s.slowTimeDuration, 100, 5000)) changed = true;
                 ImGuiMCP::Unindent();
             }
             ImGuiMCP::Separator();
 
-            // --- Seção de Simulação e Fórmula ---
-            ImGuiMCP::TextColored({ 1.0f, 0.8f, 0.0f, 1.0f }, "Probability Logic:");
-
+            ImGuiMCP::TextColored({ 1.0f, 0.8f, 0.0f, 1.0f }, "%s", GetLoc("menu.probability_logic", "Probability Logic:"));
             ImGuiMCP::Spacing();
 
+            // --- Bandit Simulations ---
             float banditPower100 = s.baseChance + (0.0f * s.healthMult) + (0.8f * s.aggressionMult) + (15.0f * s.skillMult);
             float banditChance100 = (banditPower100 / (banditPower100 + s.globalDifficulty)) * 100.0f;
 
             float banditPower50 = s.baseChance + (0.75f * s.healthMult) + (1.0f * s.aggressionMult) + (15.0f * s.skillMult);
             float banditChance50 = (banditPower50 / (banditPower50 + s.globalDifficulty)) * 100.0f;
 
+            // --- New Boss / Skilled NPC Simulations ---
             float bossPower100 = s.baseChance + (0.0f * s.healthMult) + (2.0f * s.aggressionMult) + (40.0f * s.skillMult);
             float bossChance100 = (bossPower100 / (bossPower100 + s.globalDifficulty)) * 100.0f;
 
             float bossPower50 = s.baseChance + (0.5f * s.healthMult) + (3.0f * s.aggressionMult) + (100.0f * s.skillMult);
             float bossChance50 = (bossPower50 / (bossPower50 + s.globalDifficulty)) * 100.0f;
 
-            ImGuiMCP::BulletText("Normal Bandit  - HP: 100%%, Aggro: 0.8, Weapon Skill: 15 -> Chance: %.2f%%", banditChance100);
-            ImGuiMCP::BulletText("Normal Bandit - HP: 25%%, Aggro: 1.0, Weapon Skill: 15 -> Chance: %.2f%%", banditChance50);
-            ImGuiMCP::BulletText("Skilled NPC: 100%%, Aggro: 2.0, Weapon Skill: 40 -> Chance: %.2f%%", bossChance100);
-            ImGuiMCP::BulletText("High Skill NPC: 50%%, Aggro: 3.0, Weapon Skill: 100 -> Chance: %.2f%%", bossChance50);
+            // --- UI Render ---
+            ImGuiMCP::BulletText(GetLoc("menu.sim_bandit_normal", "Normal Bandit - HP: 100%% -> Chance: %.2f%%"), banditChance100);
+            ImGuiMCP::BulletText(GetLoc("menu.sim_bandit_injured", "Normal Bandit - HP: 25%% -> Chance: %.2f%%"), banditChance50);
+            ImGuiMCP::BulletText(GetLoc("menu.sim_skilled_npc", "Skilled NPC - HP: 100%%, Aggro: 2.0, Weapon Skill: 40 -> Chance: %.2f%%"), bossChance100);
+            ImGuiMCP::BulletText(GetLoc("menu.sim_high_skill_npc", "High Skill NPC - HP: 50%%, Aggro: 3.0, Weapon Skill: 100 -> Chance: %.2f%%"), bossChance50);
 
             ImGuiMCP::Unindent();
-
             ImGuiMCP::Unindent();
         }
     }
@@ -247,14 +533,23 @@ void UnblockableSettings::UnBlockEventsMenu() {
 
 void UnblockableSettings::UnBlockMenu() {
     bool changed = false;
-    DrawChanceUI("Normal Attacks", normalAttacks, changed);
+    if (DrawDropdown(GetLoc("menu.exclusion_normal", "Exclusion Perk (Disable Normal Attacks)"), "Perk", normalDisablePerk, 300.0f)) changed = true;
+    ImGuiMCP::Separator();
+
+    DrawChanceUI(GetLoc("menu.global_normal_title", "Normal Attacks Global Settings"), normalAttacks, changed);
+    DrawRulesUI(GetLoc("menu.normal_label", "Normal Attack"), normalRules, false, changed);
 
     if (changed) UnBlockSave();
 }
 
 void UnblockableSettings::UnBlockPowerMenu() {
     bool changed = false;
-    DrawChanceUI("Power Attacks", powerAttacks, changed);
+    if (DrawDropdown(GetLoc("menu.exclusion_power", "Exclusion Perk (Disable Power Attacks)"), "Perk", powerDisablePerk, 300.0f)) changed = true;
+    ImGuiMCP::Separator();
+
+    DrawChanceUI(GetLoc("menu.global_power_title", "Power Attacks Global Settings"), powerAttacks, changed);
+    DrawRulesUI(GetLoc("menu.power_label", "Power Attack"), powerRules, true, changed);
+
     if (changed) UnBlockSave();
 }
 
@@ -268,6 +563,8 @@ void UnblockableSettings::UnBlockRegister() {
 }
 
 void UnblockableSettings::UnBlockLoad() {
+    LoadLanguage(); // Inicializa o mapeador de tradução nativo
+
     FILE* fp = nullptr;
     fopen_s(&fp, UnblockPath, "rb");
     if (fp) {
@@ -279,6 +576,14 @@ void UnblockableSettings::UnBlockLoad() {
         if (doc.IsObject()) {
             LoadSettingsInternal(doc, "Normal", normalAttacks);
             LoadSettingsInternal(doc, "Power", powerAttacks);
+
+            if (doc.HasMember("NormalDisablePerk") && doc["NormalDisablePerk"].IsString()) {
+                normalDisablePerk = FormUtil::FormIDFromString(doc["NormalDisablePerk"].GetString());
+            }
+            if (doc.HasMember("PowerDisablePerk") && doc["PowerDisablePerk"].IsString()) {
+                powerDisablePerk = FormUtil::FormIDFromString(doc["PowerDisablePerk"].GetString());
+            }
+
             if (doc.HasMember("TriggerEvents") && doc["TriggerEvents"].IsArray()) {
                 triggerEvents.clear();
                 for (auto& v : doc["TriggerEvents"].GetArray()) {
@@ -287,6 +592,7 @@ void UnblockableSettings::UnBlockLoad() {
             }
         }
     }
+    LoadRules();
 }
 
 void UnblockableSettings::UnBlockSave() {
@@ -296,13 +602,28 @@ void UnblockableSettings::UnBlockSave() {
 
     SaveSettingsInternal(doc, "Normal", normalAttacks, allocator);
     SaveSettingsInternal(doc, "Power", powerAttacks, allocator);
+
+    auto nPerkForm = RE::TESForm::LookupByID(normalDisablePerk);
+    std::string nPerkStr = FormUtil::NormalizeFormID(nPerkForm);
+    doc.AddMember("NormalDisablePerk", rapidjson::Value(nPerkStr.c_str(), allocator).Move(), allocator);
+
+    auto pPerkForm = RE::TESForm::LookupByID(powerDisablePerk);
+    std::string pPerkStr = FormUtil::NormalizeFormID(pPerkForm);
+    doc.AddMember("PowerDisablePerk", rapidjson::Value(pPerkStr.c_str(), allocator).Move(), allocator);
+
     rapidjson::Value eventArray(rapidjson::kArrayType);
     for (const auto& evt : triggerEvents) {
         eventArray.PushBack(rapidjson::Value(evt.c_str(), allocator).Move(), allocator);
     }
     doc.AddMember("TriggerEvents", eventArray, allocator);
+
     std::filesystem::path path(UnblockPath);
-    std::filesystem::create_directories(path.parent_path());
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    if (ec) {
+        logger::error("[Unblockable Hits] Error creating base plugin folder path: {}", ec.message());
+        return;
+    }
 
     FILE* fp = nullptr;
     fopen_s(&fp, UnblockPath, "wb");
@@ -313,4 +634,7 @@ void UnblockableSettings::UnBlockSave() {
         doc.Accept(writer);
         fclose(fp);
     }
+
+    for (const auto& rule : normalRules) SaveRule(rule, false);
+    for (const auto& rule : powerRules) SaveRule(rule, true);
 }

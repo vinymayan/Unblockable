@@ -2,6 +2,7 @@
 #include "Hooks.h"
 #include "Settings.h"
 #include "Serialization.h"
+#include "Manager.h"
 
 void OnMessage(SKSE::MessagingInterface::Message* message) {
     if (message->type == SKSE::MessagingInterface::kDataLoaded) {
@@ -10,6 +11,7 @@ void OnMessage(SKSE::MessagingInterface::Message* message) {
         UnblockableSettings::UnBlockLoad();
         UnblockableSettings::UnBlockRegister();
         RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink(Sink::PC3DLoadEventHandler::GetSingleton());
+        Manager::GetSingleton()->PopulateAllLists();
     }
     if (message->type == SKSE::MessagingInterface::kNewGame || message->type == SKSE::MessagingInterface::kPostLoadGame) {
         RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink(Sink::NpcCombatTracker::GetSingleton());

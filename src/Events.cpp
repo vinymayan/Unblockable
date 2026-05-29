@@ -2,36 +2,6 @@
 #include "Settings.h"
 #include "DelayedDispatcher.h"
 
-bool teste = false;
-//void AttachTriggerToActor(RE::Actor* actor) {
-//    if (teste) return;
-//
-//    // 1. Localiza a base do Activator
-//    RE::TESObjectACTI* triggerBase = Sink::test1;
-//    auto player = RE::PlayerCharacter::GetSingleton();
-//
-//    if (!triggerBase || !player) return;
-//
-//
-//    auto spawnedRef = actor->PlaceObjectAtMe(triggerBase, false);
-//    spawnedRef->SetMotionType(RE::hkpMotion::MotionType::kKeyframed, true);
-//        auto trigger3D = spawnedRef->Load3D(true);
-//            RE::BSFixedString nodeName = "WEAPON"; 
-//            auto playerNode = player->Load3D(true)->AsNode();
-//            auto targetNode = playerNode->GetObjectByName(nodeName);
-//
-//                targetNode->AsNode()->AttachChild(trigger3D, true);
-//
-//                RE::NiUpdateData ctx;
-//                trigger3D->Update(ctx);
-//
-//                logger::info("Trigger 3D anexado ao node {} do player", nodeName.c_str());
-//
-//        
-//    
-//    teste = true;
-//}
-
 RE::BSEventNotifyControl Sink::NpcCombatTracker::ProcessEvent(const RE::TESCombatEvent* a_event, RE::BSTEventSource<RE::TESCombatEvent>*)
 {
     if (!a_event || !a_event->actor) {
@@ -133,11 +103,14 @@ RE::BSEventNotifyControl Sink::NpcCycleSink::ProcessEvent(const RE::BSAnimationG
 
     auto npc = const_cast<RE::Actor*>(actor);
     int isPower = actor->IsPowerAttacking();
+
 	bool isUnblockable = false;
     npc->GetGraphVariableBool("isUnblockableHit", isUnblockable);
 	bool didMath = false;
     npc->GetGraphVariableBool("UnblockableAttackCalcCMF", didMath);
 	auto player = RE::PlayerCharacter::GetSingleton();
+    if (npc == player) return RE::BSEventNotifyControl::kContinue;
+
     if (!isUnblockable && !didMath) {
         bool shouldTrigger = false;
         for (const auto& targetEvent : UnblockableSettings::triggerEvents) {
@@ -157,29 +130,34 @@ RE::BSEventNotifyControl Sink::NpcCycleSink::ProcessEvent(const RE::BSAnimationG
     else if (eventName == "UnblockableHitStartCMF") {
         npc->SetGraphVariableBool("isUnblockableHit", true);
         if (IsPlayerInDanger(npc, player)) {
-            auto& settings = isPower ? UnblockableSettings::powerAttacks : UnblockableSettings::normalAttacks;
+            auto settings = UnblockableSettings::GetSettingsForActor(npc, isPower);
             if (settings.slowTimeEnabled) {
                 ApplySlowTime(settings.slowTimeDuration, settings.slowTimeMultiplier);
             }
         }
         UnblockableManager::PlayUnblockableVisuals(npc, isPower);
     }
-    else if (eventName == "preHitFrame" && isUnblockable) {
-        auto& settings = isPower ? UnblockableSettings::powerAttacks : UnblockableSettings::normalAttacks;
-        if (settings.magnetismEnabled) {
-            npc->NotifyAnimationGraph("SnapToTargetCMF");
-        }
-    }
-    else if (eventName == "UndodgeableHitEndCMF") {
+    else if (eventName == "UnblockableHitEndCMF") {
+        npc->SetGraphVariableBool("isUnblockableHit", false);
         npc->SetGraphVariableBool("UnblockableAttackCalcCMF", false);
+    }
+    else if (isUnblockable) {
+        if (eventName == "preHitFrame" || eventName == "PowerAttack_Start_End" ||
+            eventName == "weaponSwing" || eventName == "weaponLeftSwing" || eventName == "h2hAttack" || eventName == "HitFrame") {
+            auto& settings = isPower ? UnblockableSettings::powerAttacks : UnblockableSettings::normalAttacks;
+            if (settings.magnetismEnabled) {
+                npc->NotifyAnimationGraph("SnapToTargetCMF");
+            }
+        }
+        else if (eventName == "attackStop" || eventName == "CastOKStop") {
+                npc->NotifyAnimationGraph("UnblockableHitEndCMF");
+        }
     }
     else if (eventName == "attackStop" || eventName == "CastOKStop") {
         npc->SetGraphVariableBool("UnblockableAttackCalcCMF", false);
-        if (isUnblockable) {
-            npc->NotifyAnimationGraph("UnblockableHitEndCMF");
-        }
     }
     
+
     return RE::BSEventNotifyControl::kContinue;
 }
 
@@ -213,20 +191,18 @@ RE::ActorValue UnblockableManager::GetSkillForWeapon(RE::TESObjectWEAP* a_weapon
     }
 }
 
-void UnblockableManager::PlayUnblockableVisuals(RE::Actor* a_actor,bool isPower)
+void UnblockableManager::PlayUnblockableVisuals(RE::Actor* a_actor, bool isPower)
 {
     if (!a_actor) return;
-    // Busca a configuração correta (Normal ou Power) baseada no ataque
-    auto& settings = isPower ? UnblockableSettings::powerAttacks : UnblockableSettings::normalAttacks;
+    auto settings = UnblockableSettings::GetSettingsForActor(a_actor, isPower);
 
-    // --- Lógica de Som ---
+    // --- Som ---
     if (settings.soundEnabled) {
         auto sound = isPower ? Sink::UnblockHitPowerSound : Sink::UnblockHitSound;
         a_actor->ApplyEffectShader(sound, 1.5f, nullptr, false, false);
-
     }
 
-    // --- Lógica Visual ---
+    // --- Visual ---
     if (settings.visualsEnabled) {
         auto actor3D = a_actor->Get3D();
         if (!actor3D) return;
@@ -242,18 +218,13 @@ void UnblockableManager::PlayUnblockableVisuals(RE::Actor* a_actor,bool isPower)
         else {
             a_actor->ApplyArtObject(Sink::UnblockHit, 5.0f, nullptr, false, false, targetNode);
         }
-
-        //SKSE::log::info("Visual de ataque aplicado ao node: {}", targetNode ? targetNode->name.c_str() : "Root");
     }
     if (settings.effectShaderEnabled) {
         auto shader = isPower ? Sink::ShaUnblockPowerHit : Sink::ShaUnblockNormalHit;
         if (shader) {
-            // Aplica o shader ao ator. 
-            // O tempo -1.0f usa o tempo padrão do formulário, ou você pode definir ex: 2.0f
-            a_actor->ApplyEffectShader(shader, -1.0f, nullptr, false, false);
+            a_actor->ApplyEffectShader(shader, settings.effectShaderDuration, nullptr, false, false);
         }
     }
-
 }
 
 
@@ -261,17 +232,18 @@ bool UnblockableManager::CalculateUnblockableChance(RE::Actor* a_actor, bool isP
 {
     if (!a_actor) return false;
 
-    auto& settings = isPower ? UnblockableSettings::powerAttacks : UnblockableSettings::normalAttacks;
+    // Passo 1: Verifica se possui o Perk de Exclusão Completa
+    if (UnblockableSettings::IsActorExcluded(a_actor, isPower)) return false;
+
+    // Passo 2: Avalia se há alguma regra específica por Perk ativa para esse Ator (Fallback incluso)
+    auto settings = UnblockableSettings::GetSettingsForActor(a_actor, isPower);
     if (!settings.enabled) return false;
-
-
 
     float healthPct = std::clamp(a_actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth) /
         a_actor->GetActorValueMax(RE::ActorValue::kHealth), 0.0f, 1.0f);
     float healthWeight = (1.0f - healthPct) * settings.healthMult;
 
     float aggression = a_actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kAggression);
-	//logger::info("[Unblockable] Ator {:08X} Aggression: {:.2f}", a_actor->GetFormID(), aggression);
     float aggressionWeight = aggression * settings.aggressionMult;
 
     float skillWeight = 0.0f;
@@ -283,11 +255,9 @@ bool UnblockableManager::CalculateUnblockableChance(RE::Actor* a_actor, bool isP
         }
     }
 
-
     float attackerPower = settings.baseChance + healthWeight + aggressionWeight + skillWeight;
     float resistance = settings.globalDifficulty;
     float finalChance = attackerPower / (attackerPower + resistance);
-
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -295,10 +265,8 @@ bool UnblockableManager::CalculateUnblockableChance(RE::Actor* a_actor, bool isP
     float roll = static_cast<float>(dis(gen));
 
     if (roll < finalChance) {
-        //logger::info("[Unblockable] Sucesso! Power: {:.2f}, Resist: {:.2f}, Chance Final: {:.2f}%",attackerPower, resistance, finalChance * 100.0f);
         return true;
     }
-    //logger::info("[Unblockable] Falha. Power: {:.2f}, Resist: {:.2f}, Chance Final: {:.2f}%",attackerPower, resistance, finalChance * 100.0f);
     return false;
 }
 
