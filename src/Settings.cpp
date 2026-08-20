@@ -3,16 +3,115 @@
 #include <algorithm>
 
 const char* Old_UnblockPath = "Data/SKSE/Plugins/UnblockableHits.json";
-const char* UnblockPath = "Data/SKSE/Plugins/Unblock/Settings.json";
-const char* LANG_PATH = "Data/SKSE/Plugins/Unblock/Language.json";
+const char* Legacy_UnblockPath = "Data/SKSE/Plugins/Unblock/Settings.json";
+const char* UnblockPath = "Data/Viny Mods/Unblockable Hits/Settings.json";
+const char* LANG_PATH = "Data/Viny Mods/Unblockable Hits/Language.json";
+const char* LEGACY_LANG_PATH = "Data/SKSE/Plugins/Unblock/Language.json";
 static std::unordered_map<std::string, std::string> LangMap;
+
+namespace {
+    const std::string RULES_DIR = "Data/Viny Mods/Unblockable Hits/Rules/";
+    const std::string LEGACY_RULES_DIR = "Data/SKSE/Plugins/Unblock/Rules/";
+
+    std::string RuleDir(bool isPower)
+    {
+        return RULES_DIR + (isPower ? "Power/" : "Normal/");
+    }
+
+    std::string LegacyRuleDir(bool isPower)
+    {
+        return LEGACY_RULES_DIR + (isPower ? "Power/" : "Normal/");
+    }
+
+    void MigrateFileIfNeeded(const std::string& newPath, const std::string& legacyPath)
+    {
+        if (std::filesystem::exists(newPath) || !std::filesystem::exists(legacyPath)) return;
+
+        std::filesystem::create_directories(std::filesystem::path(newPath).parent_path());
+        std::error_code ec;
+        std::filesystem::copy_file(legacyPath, newPath, std::filesystem::copy_options::skip_existing, ec);
+        if (ec) {
+            logger::warn("[Unblockable Hits] Failed to migrate '{}' to '{}': {}", legacyPath, newPath, ec.message());
+        }
+    }
+
+    void MigrateRuleDirectory(bool isPower)
+    {
+        const auto newDir = RuleDir(isPower);
+        const auto legacyDir = LegacyRuleDir(isPower);
+        std::filesystem::create_directories(newDir);
+        if (!std::filesystem::exists(legacyDir)) return;
+
+        for (const auto& entry : std::filesystem::directory_iterator(legacyDir)) {
+            if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
+
+            const auto targetPath = std::filesystem::path(newDir) / entry.path().filename();
+            if (std::filesystem::exists(targetPath)) continue;
+
+            std::error_code ec;
+            std::filesystem::copy_file(entry.path(), targetPath, std::filesystem::copy_options::skip_existing, ec);
+            if (ec) {
+                logger::warn("[Unblockable Hits] Failed to migrate rule '{}' to '{}': {}", entry.path().string(), targetPath.string(), ec.message());
+            }
+        }
+    }
+
+    std::string GetEditorID(RE::TESForm* form)
+    {
+        if (!form) return {};
+        const char* editorID = form->GetFormEditorID();
+        return editorID ? editorID : "";
+    }
+
+    void AddFormIdentity(rapidjson::Document& doc, rapidjson::Document::AllocatorType& alloc, const char* key, RE::FormID formID)
+    {
+        auto form = RE::TESForm::LookupByID(formID);
+        const auto editorID = GetEditorID(form);
+        if (!editorID.empty()) {
+            std::string editorKey = std::string(key) + "EditorID";
+            rapidjson::Value jsonKey;
+            jsonKey.SetString(editorKey.c_str(), static_cast<rapidjson::SizeType>(editorKey.size()), alloc);
+            rapidjson::Value jsonValue;
+            jsonValue.SetString(editorID.c_str(), static_cast<rapidjson::SizeType>(editorID.size()), alloc);
+            doc.AddMember(jsonKey, jsonValue, alloc);
+        }
+
+        std::string formStr = FormUtil::NormalizeFormID(form);
+        rapidjson::Value fallback;
+        fallback.SetString(formStr.c_str(), static_cast<rapidjson::SizeType>(formStr.size()), alloc);
+        doc.AddMember(rapidjson::Value(key, alloc).Move(), fallback, alloc);
+    }
+
+    RE::FormID ReadFormIdentity(const rapidjson::Document& doc, const char* key)
+    {
+        std::string editorKey = std::string(key) + "EditorID";
+        if (doc.HasMember(editorKey.c_str()) && doc[editorKey.c_str()].IsString()) {
+            if (auto form = RE::TESForm::LookupByEditorID(doc[editorKey.c_str()].GetString())) {
+                return form->GetFormID();
+            }
+        }
+        if (doc.HasMember(key) && doc[key].IsString()) {
+            return FormUtil::FormIDFromString(doc[key].GetString());
+        }
+        if (doc.HasMember(key) && doc[key].IsUint()) {
+            return doc[key].GetUint();
+        }
+        return 0;
+    }
+}
 
 void UnblockableSettings::LoadLanguage() {
     LangMap.clear();
+    MigrateFileIfNeeded(LANG_PATH, LEGACY_LANG_PATH);
+
     std::ifstream file(LANG_PATH, std::ios::binary);
     if (!file.is_open()) {
-        SKSE::log::warn("Não foi possível carregar o arquivo Language.json. Usando textos padrões.");
-        return;
+        std::ifstream legacyFile(LEGACY_LANG_PATH, std::ios::binary);
+        if (!legacyFile.is_open()) {
+            SKSE::log::warn("Não foi possível carregar o arquivo Language.json. Usando textos padrões.");
+            return;
+        }
+        file.swap(legacyFile);
     }
 
     std::stringstream buffer;
@@ -176,7 +275,7 @@ bool UnblockableSettings::DrawDropdown(const char* label, const std::string& cat
 }
 
 void UnblockableSettings::SaveRule(const UnblockableRule& rule, bool isPower) {
-    std::string dir = isPower ? "Data/SKSE/Plugins/Unblock/Rules/Power/" : "Data/SKSE/Plugins/Unblock/Rules/Normal/";
+    std::string dir = RuleDir(isPower);
 
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
@@ -193,10 +292,7 @@ void UnblockableSettings::SaveRule(const UnblockableRule& rule, bool isPower) {
     rapidjson::Value rName; rName.SetString(rule.ruleName.c_str(), alloc);
     doc.AddMember("ruleName", rName, alloc);
 
-    auto perkForm = RE::TESForm::LookupByID(rule.perkID);
-    std::string perkStr = FormUtil::NormalizeFormID(perkForm);
-    rapidjson::Value pStr; pStr.SetString(perkStr.c_str(), alloc);
-    doc.AddMember("perk", pStr, alloc);
+    AddFormIdentity(doc, alloc, "perk", rule.perkID);
 
     SaveSettingsInternal(doc, "", const_cast<ChanceSettings&>(rule.settings), alloc);
 
@@ -215,8 +311,11 @@ void UnblockableSettings::LoadRules() {
     normalRules.clear();
     powerRules.clear();
 
-    std::string normalDir = "Data/SKSE/Plugins/Unblock/Rules/Normal/";
-    std::string powerDir = "Data/SKSE/Plugins/Unblock/Rules/Power/";
+    MigrateRuleDirectory(false);
+    MigrateRuleDirectory(true);
+
+    std::string normalDir = RuleDir(false);
+    std::string powerDir = RuleDir(true);
 
     auto loadFromDir = [](const std::string& dir, std::vector<UnblockableRule>& rulesList) {
         if (!std::filesystem::exists(dir)) return;
@@ -237,10 +336,7 @@ void UnblockableSettings::LoadRules() {
                 UnblockableRule rule;
                 if (doc.HasMember("ruleName")) rule.ruleName = doc["ruleName"].GetString();
 
-                if (doc.HasMember("perk")) {
-                    std::string perkStr = doc["perk"].GetString();
-                    rule.perkID = FormUtil::FormIDFromString(perkStr);
-                }
+                rule.perkID = ReadFormIdentity(doc, "perk");
 
                 LoadSettingsInternal(doc, "", rule.settings);
                 rulesList.push_back(rule);
@@ -278,7 +374,7 @@ void UnblockableSettings::DrawRulesUI(const char* label, std::vector<Unblockable
             if (ImGuiMCP::InputText(GetLoc("menu.rule_name", "Rule Name"), nameBuf, sizeof(nameBuf))) {
                 std::string newName(nameBuf);
                 if (newName != rule.ruleName && !newName.empty()) {
-                    std::string oldDir = isPower ? "Data/SKSE/Plugins/Unblock/Rules/Power/" : "Data/SKSE/Plugins/Unblock/Rules/Normal/";
+                    std::string oldDir = RuleDir(isPower);
                     std::string oldPath = oldDir + rule.ruleName + ".json";
                     if (std::filesystem::exists(oldPath)) std::filesystem::remove(oldPath);
                     rule.ruleName = newName;
@@ -314,7 +410,7 @@ void UnblockableSettings::DrawRulesUI(const char* label, std::vector<Unblockable
 
             ImGuiMCP::Spacing();
             if (ImGuiMCP::Button(GetLoc("menu.remove_rule", "Remove Rule"), { 150, 0 })) {
-                std::string dir = isPower ? "Data/SKSE/Plugins/Unblock/Rules/Power/" : "Data/SKSE/Plugins/Unblock/Rules/Normal/";
+                std::string dir = RuleDir(isPower);
                 std::string path = dir + rule.ruleName + ".json";
                 if (std::filesystem::exists(path)) std::filesystem::remove(path);
                 rules.erase(rules.begin() + i);
@@ -453,7 +549,7 @@ void UnblockableSettings::UnBlockEventsMenu() {
     static char newEventBuf[128] = "";
     bool changed = false;
 
-    ImGuiMCP::TextColored({ 1.0f, 0.8f, 0.0f, 1.0f }, "Animation Trigger Events:");
+    ImGuiMCP::TextColored({ 1.0f, 0.8f, 0.0f, 1.0f }, "%s", GetLoc("menu.animation_trigger_events", "Animation Trigger Events:"));
     ImGuiMCP::Separator();
 
     // 1. Obter referências de estilo e largura da janela
@@ -519,8 +615,8 @@ void UnblockableSettings::UnBlockEventsMenu() {
     ImGuiMCP::Separator();
 
     // Adição de novos eventos
-    ImGuiMCP::InputText("New Event Name", newEventBuf, sizeof(newEventBuf));
-    if (ImGuiMCP::Button("Add Event") && strlen(newEventBuf) > 0) {
+    ImGuiMCP::InputText(GetLoc("menu.new_event_name", "New Event Name"), newEventBuf, sizeof(newEventBuf));
+    if (ImGuiMCP::Button(GetLoc("menu.add_event", "Add Event")) && strlen(newEventBuf) > 0) {
         triggerEvents.push_back(newEventBuf);
         newEventBuf[0] = '\0';
         changed = true;
@@ -555,15 +651,18 @@ void UnblockableSettings::UnBlockPowerMenu() {
 
 void UnblockableSettings::UnBlockRegister() {
     if (SKSEMenuFramework::IsInstalled()) {
-        SKSEMenuFramework::SetSection("Unblockable Hits");
-        SKSEMenuFramework::AddSectionItem("Normal Attacks", UnBlockMenu);
-        SKSEMenuFramework::AddSectionItem("Power Attacks", UnBlockPowerMenu);
-        SKSEMenuFramework::AddSectionItem("Animation Triggers", UnBlockEventsMenu);
+        LoadLanguage();
+        SKSEMenuFramework::SetSection(GetLoc("menu.section", "Unblockable Hits"));
+        SKSEMenuFramework::AddSectionItem(GetLoc("menu.normal_attacks", "Normal Attacks"), UnBlockMenu);
+        SKSEMenuFramework::AddSectionItem(GetLoc("menu.power_attacks", "Power Attacks"), UnBlockPowerMenu);
+        SKSEMenuFramework::AddSectionItem(GetLoc("menu.animation_triggers", "Animation Triggers"), UnBlockEventsMenu);
     }
 }
 
 void UnblockableSettings::UnBlockLoad() {
     LoadLanguage(); // Inicializa o mapeador de tradução nativo
+    MigrateFileIfNeeded(UnblockPath, Legacy_UnblockPath);
+    MigrateFileIfNeeded(UnblockPath, Old_UnblockPath);
 
     FILE* fp = nullptr;
     fopen_s(&fp, UnblockPath, "rb");
@@ -577,12 +676,8 @@ void UnblockableSettings::UnBlockLoad() {
             LoadSettingsInternal(doc, "Normal", normalAttacks);
             LoadSettingsInternal(doc, "Power", powerAttacks);
 
-            if (doc.HasMember("NormalDisablePerk") && doc["NormalDisablePerk"].IsString()) {
-                normalDisablePerk = FormUtil::FormIDFromString(doc["NormalDisablePerk"].GetString());
-            }
-            if (doc.HasMember("PowerDisablePerk") && doc["PowerDisablePerk"].IsString()) {
-                powerDisablePerk = FormUtil::FormIDFromString(doc["PowerDisablePerk"].GetString());
-            }
+            normalDisablePerk = ReadFormIdentity(doc, "NormalDisablePerk");
+            powerDisablePerk = ReadFormIdentity(doc, "PowerDisablePerk");
 
             if (doc.HasMember("TriggerEvents") && doc["TriggerEvents"].IsArray()) {
                 triggerEvents.clear();
@@ -603,13 +698,8 @@ void UnblockableSettings::UnBlockSave() {
     SaveSettingsInternal(doc, "Normal", normalAttacks, allocator);
     SaveSettingsInternal(doc, "Power", powerAttacks, allocator);
 
-    auto nPerkForm = RE::TESForm::LookupByID(normalDisablePerk);
-    std::string nPerkStr = FormUtil::NormalizeFormID(nPerkForm);
-    doc.AddMember("NormalDisablePerk", rapidjson::Value(nPerkStr.c_str(), allocator).Move(), allocator);
-
-    auto pPerkForm = RE::TESForm::LookupByID(powerDisablePerk);
-    std::string pPerkStr = FormUtil::NormalizeFormID(pPerkForm);
-    doc.AddMember("PowerDisablePerk", rapidjson::Value(pPerkStr.c_str(), allocator).Move(), allocator);
+    AddFormIdentity(doc, allocator, "NormalDisablePerk", normalDisablePerk);
+    AddFormIdentity(doc, allocator, "PowerDisablePerk", powerDisablePerk);
 
     rapidjson::Value eventArray(rapidjson::kArrayType);
     for (const auto& evt : triggerEvents) {

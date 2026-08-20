@@ -22,8 +22,8 @@ namespace Sink {
     inline RE::BGSArtObject* UnblockPowerHit = nullptr;
     inline RE::TESEffectShader* ShaUnblockNormalHit = nullptr;
     inline RE::TESEffectShader* ShaUnblockPowerHit = nullptr;
-    inline RE::TESEffectShader* UnblockHitSound = nullptr;
-    inline RE::TESEffectShader* UnblockHitPowerSound = nullptr;
+    inline RE::BGSSoundDescriptorForm* UnblockHitSound = nullptr;
+    inline RE::BGSSoundDescriptorForm* UnblockHitPowerSound = nullptr;
     inline RE::TESObjectACTI* test1 = nullptr;
 
     void ApplySlowTime(int a_duration, float a_multiplier);

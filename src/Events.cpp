@@ -1,6 +1,81 @@
-Ôªø#include "Events.h"
+#include "Events.h"
 #include "Settings.h"
 #include "DelayedDispatcher.h"
+#include "ClibUtil/editorID.hpp"
+
+namespace {
+    template <class T>
+    T* LookupFormEditorIDFirst(std::string_view editorID, RE::FormID fallbackLocalID, std::string_view pluginName)
+    {
+        auto* dataHandler = RE::TESDataHandler::GetSingleton();
+        if (dataHandler && !editorID.empty()) {
+            const auto& forms = dataHandler->GetFormArray(T::FORMTYPE);
+            for (auto* rawForm : forms) {
+                if (!rawForm || rawForm->IsDeleted() || rawForm->IsIgnored()) {
+                    continue;
+                }
+
+                try {
+                    if (clib_util::editorID::get_editorID(rawForm) == editorID) {
+                        return rawForm->As<T>();
+                    }
+                } catch (const std::exception& e) {
+                    SKSE::log::warn("Failed to read EditorID for FormID {:08X}: {}", rawForm->GetFormID(), e.what());
+                }
+            }
+        }
+
+        return dataHandler ? dataHandler->LookupForm<T>(fallbackLocalID, pluginName) : nullptr;
+    }
+
+    bool ApplyArtObjectToActor(RE::Actor* actor, RE::BGSArtObject* artObject)
+    {
+        if (!actor || !artObject) {
+            return false;
+        }
+
+        auto* actor3D = actor->Get3D();
+        if (!actor3D) {
+            return false;
+        }
+
+        auto* targetNode = actor3D->GetObjectByName("WEAPON");
+        if (!targetNode) {
+            targetNode = actor3D->GetObjectByName("NPC R Hand [RHand]");
+        }
+
+        if (actor->ApplyArtObject(artObject, 5.0f, nullptr, false, false, targetNode)) {
+            return true;
+        }
+
+        // Dynamic ARTOs may need the engine to choose the attachment node.
+        return targetNode && actor->ApplyArtObject(artObject, 5.0f) != nullptr;
+    }
+
+    bool PlaySoundOnActor(RE::Actor* actor, RE::BGSSoundDescriptorForm* sound)
+    {
+        if (!actor || !sound) {
+            return false;
+        }
+
+        auto* audio = RE::BSAudioManager::GetSingleton();
+        if (!audio) {
+            return false;
+        }
+
+        RE::BSSoundHandle handle;
+        if (!audio->GetSoundHandle(handle, sound)) {
+            return false;
+        }
+
+        if (auto* node = actor->Get3D()) {
+            handle.SetObjectToFollow(node);
+        } else {
+            handle.SetPosition(actor->GetPosition());
+        }
+        return handle.Play();
+    }
+}
 
 RE::BSEventNotifyControl Sink::NpcCombatTracker::ProcessEvent(const RE::TESCombatEvent* a_event, RE::BSTEventSource<RE::TESCombatEvent>*)
 {
@@ -10,7 +85,7 @@ RE::BSEventNotifyControl Sink::NpcCombatTracker::ProcessEvent(const RE::TESComba
     
     auto actor = a_event->actor.get();
     auto* npc = actor->As<RE::Actor>();
-    if (npc && npc != RE::PlayerCharacter::GetSingleton()) {  // Garante que √© um ator v√°lido
+    if (npc && npc != RE::PlayerCharacter::GetSingleton()) {  // Garante que È um ator v·lido
         switch (a_event->newState.get()) {
         case RE::ACTOR_COMBAT_STATE::kCombat:
             NpcCombatTracker::RegisterSink(npc);
@@ -30,7 +105,7 @@ void Sink::NpcCombatTracker::RegisterSink(RE::Actor* a_actor)
     if (g_trackedNPCs.find(a_actor->GetFormID()) == g_trackedNPCs.end()) {
         a_actor->AddAnimationGraphEventSink(&g_npcSink);
         g_trackedNPCs.insert(a_actor->GetFormID());
-        //SKSE::log::info("[NpcCombatTracker] Come√ßando a rastrear anima√ß√µes do ator {:08X}", a_actor->GetFormID());
+        //SKSE::log::info("[NpcCombatTracker] ComeÁando a rastrear animaÁıes do ator {:08X}", a_actor->GetFormID());
     }
 }
 
@@ -42,27 +117,27 @@ void Sink::NpcCombatTracker::UnregisterSink(RE::Actor* a_actor)
     if (g_trackedNPCs.find(a_actor->GetFormID()) != g_trackedNPCs.end()) {
         a_actor->RemoveAnimationGraphEventSink(&g_npcSink);
         g_trackedNPCs.erase(a_actor->GetFormID());
-        //SKSE::log::info("[NpcCombatTracker] Parando de rastrear anima√ß√µes do ator {:08X}", a_actor->GetFormID());
+        //SKSE::log::info("[NpcCombatTracker] Parando de rastrear animaÁıes do ator {:08X}", a_actor->GetFormID());
     }
 }
 
 void Sink::NpcCombatTracker::RegisterSinksForExistingCombatants()
 {
-    SKSE::log::info("[NpcCombatTracker] Verificando NPCs j√° em combate ap√≥s carregar o jogo...");
+    SKSE::log::info("[NpcCombatTracker] Verificando NPCs j· em combate apÛs carregar o jogo...");
 
     auto* processLists = RE::ProcessLists::GetSingleton();
     if (!processLists) {
-        SKSE::log::warn("[NpcCombatTracker] N√£o foi poss√≠vel obter ProcessLists.");
+        SKSE::log::warn("[NpcCombatTracker] N„o foi possÌvel obter ProcessLists.");
         return;
     }
 
-    // Itera sobre todos os atores que est√£o "ativos" no jogo
+    // Itera sobre todos os atores que est„o "ativos" no jogo
     for (auto& actorHandle : processLists->highActorHandles) {
         if (auto actor = actorHandle.get().get()) {
-            // A fun√ß√£o IsInCombat() nos diz se o ator j√° est√° em um estado de combate
+            // A funÁ„o IsInCombat() nos diz se o ator j· est· em um estado de combate
             if (!actor->IsPlayerRef()) {
                 if (actor->IsInCombat()) {
-                    // Usamos a mesma fun√ß√£o de registro que j√° existe!
+                    // Usamos a mesma funÁ„o de registro que j· existe!
                     RegisterSink(actor);
                 }
             }
@@ -70,19 +145,19 @@ void Sink::NpcCombatTracker::RegisterSinksForExistingCombatants()
         }
     }
 
-    SKSE::log::info("[NpcCombatTracker] Verifica√ß√£o conclu√≠da.");
+    SKSE::log::info("[NpcCombatTracker] VerificaÁ„o concluÌda.");
 }
 
 bool IsPlayerInDanger(RE::Actor* npc, RE::PlayerCharacter* player) {
     if (!npc->IsAttacking()) return false;
 
-    // 1. Verificar dist√¢ncia (alcance da arma)
+    // 1. Verificar dist‚ncia (alcance da arma)
     float distance = npc->GetDistance(player);
     if (distance > 250.0f) return false; // Exemplo de alcance melee
     RE::NiPoint3 origin;
-    RE::NiPoint3 forward; // O par√¢metro a_direction ser√° preenchido aqui
+    RE::NiPoint3 forward; // O par‚metro a_direction ser· preenchido aqui
 
-    // False indica que n√£o queremos o offset da c√¢mera (ideal para NPCs)
+    // False indica que n„o queremos o offset da c‚mera (ideal para NPCs)
     npc->GetEyeVector(origin, forward, false);
     RE::NiPoint3 toPlayer = player->GetPosition() - npc->GetPosition();
     toPlayer.Unitize();
@@ -103,7 +178,6 @@ RE::BSEventNotifyControl Sink::NpcCycleSink::ProcessEvent(const RE::BSAnimationG
 
     auto npc = const_cast<RE::Actor*>(actor);
     int isPower = actor->IsPowerAttacking();
-
 	bool isUnblockable = false;
     npc->GetGraphVariableBool("isUnblockableHit", isUnblockable);
 	bool didMath = false;
@@ -171,7 +245,7 @@ RE::ActorValue UnblockableManager::GetSkillForWeapon(RE::TESObjectWEAP* a_weapon
     case RE::WEAPON_TYPE::kOneHandDagger:
     case RE::WEAPON_TYPE::kOneHandAxe:
     case RE::WEAPON_TYPE::kOneHandMace:
-    case RE::WEAPON_TYPE::kStaff: // Cajados geralmente usam anima√ß√£o de uma m√£o
+    case RE::WEAPON_TYPE::kStaff: // Cajados geralmente usam animaÁ„o de uma m„o
         return RE::ActorValue::kOneHanded;
 
     case RE::WEAPON_TYPE::kTwoHandSword:
@@ -183,7 +257,7 @@ RE::ActorValue UnblockableManager::GetSkillForWeapon(RE::TESObjectWEAP* a_weapon
         return RE::ActorValue::kArchery;
 
     case RE::WEAPON_TYPE::kHandToHandMelee:
-        // Em Skyrim, NPCs usam OneHanded para c√°lculos de combate desarmado frequentemente
+        // Em Skyrim, NPCs usam OneHanded para c·lculos de combate desarmado frequentemente
         return RE::ActorValue::kOneHanded;
 
     default:
@@ -199,24 +273,19 @@ void UnblockableManager::PlayUnblockableVisuals(RE::Actor* a_actor, bool isPower
     // --- Som ---
     if (settings.soundEnabled) {
         auto sound = isPower ? Sink::UnblockHitPowerSound : Sink::UnblockHitSound;
-        a_actor->ApplyEffectShader(sound, 1.5f, nullptr, false, false);
+        if (!PlaySoundOnActor(a_actor, sound)) {
+            SKSE::log::warn("N„o foi possÌvel tocar o som unblockable no ator {:08X}.", a_actor->GetFormID());
+        }
     }
 
     // --- Visual ---
     if (settings.visualsEnabled) {
-        auto actor3D = a_actor->Get3D();
-        if (!actor3D) return;
-
-        RE::NiAVObject* targetNode = actor3D->GetObjectByName("WEAPON");
-        if (!targetNode) {
-            targetNode = actor3D->GetObjectByName("NPC R Hand [RHand]");
-        }
-
-        if (isPower) {
-            a_actor->ApplyArtObject(Sink::UnblockPowerHit, 5.0f, nullptr, false, false, targetNode);
-        }
-        else {
-            a_actor->ApplyArtObject(Sink::UnblockHit, 5.0f, nullptr, false, false, targetNode);
+        auto* artObject = isPower ? Sink::UnblockPowerHit : Sink::UnblockHit;
+        if (!ApplyArtObjectToActor(a_actor, artObject)) {
+            SKSE::log::warn(
+                "Could not apply unblockable art object '{}' to actor {:08X}.",
+                isPower ? "UnblockblePowerEffect" : "UnblockbleNormalEffect",
+                a_actor->GetFormID());
         }
     }
     if (settings.effectShaderEnabled) {
@@ -232,10 +301,10 @@ bool UnblockableManager::CalculateUnblockableChance(RE::Actor* a_actor, bool isP
 {
     if (!a_actor) return false;
 
-    // Passo 1: Verifica se possui o Perk de Exclus√£o Completa
+    // Passo 1: Verifica se possui o Perk de Exclus„o Completa
     if (UnblockableSettings::IsActorExcluded(a_actor, isPower)) return false;
 
-    // Passo 2: Avalia se h√° alguma regra espec√≠fica por Perk ativa para esse Ator (Fallback incluso)
+    // Passo 2: Avalia se h· alguma regra especÌfica por Perk ativa para esse Ator (Fallback incluso)
     auto settings = UnblockableSettings::GetSettingsForActor(a_actor, isPower);
     if (!settings.enabled) return false;
 
@@ -295,26 +364,32 @@ void Sink::ApplySlowTime(int a_duration, float a_multiplier)
 }
 
 void Sink::InitializeForms() {
-    auto* dataHandler = RE::TESDataHandler::GetSingleton();
-    if (!dataHandler) return;
+    UnblockHit = LookupFormEditorIDFirst<RE::BGSArtObject>("UnblockbleNormalEffect", 0x803, "Unblockable.esp");
+    UnblockPowerHit = LookupFormEditorIDFirst<RE::BGSArtObject>("UnblockblePowerEffect", 0x802, "Unblockable.esp");
 
+    UnblockHitSound = LookupFormEditorIDFirst<RE::BGSSoundDescriptorForm>("UnblockableSound", 0x806, "Unblockable.esp");
+    UnblockHitPowerSound = LookupFormEditorIDFirst<RE::BGSSoundDescriptorForm>("UnblockablePowerSound", 0x807, "Unblockable.esp");
 
-    UnblockHit = dataHandler->LookupForm<RE::BGSArtObject>(0x803, "Unblockable.esp");
-    UnblockPowerHit = dataHandler->LookupForm<RE::BGSArtObject>(0x802, "Unblockable.esp");
-
-	UnblockHitSound = dataHandler->LookupForm<RE::TESEffectShader>(0x80B, "Unblockable.esp");
-    UnblockHitPowerSound = dataHandler->LookupForm<RE::TESEffectShader>(0x80C, "Unblockable.esp");
-
-    ShaUnblockNormalHit = dataHandler->LookupForm<RE::TESEffectShader>(0x805, "Unblockable.esp");
-    ShaUnblockPowerHit = dataHandler->LookupForm<RE::TESEffectShader>(0x80A, "Unblockable.esp");
+    ShaUnblockNormalHit = LookupFormEditorIDFirst<RE::TESEffectShader>("FXS_UnblockableNormalAttack", 0x805, "Unblockable.esp");
+    ShaUnblockPowerHit = LookupFormEditorIDFirst<RE::TESEffectShader>("FXS_UnblockablePowerAttack", 0x80A, "Unblockable.esp");
 
     //test1 = dataHandler->LookupForm<RE::TESObjectACTI>(0x909, "Unblockable.esp");
 
     if (!UnblockHit) {
-        SKSE::log::critical("FALHA: n√£o encontrado em UnblockHit.esp!");
+        SKSE::log::critical("FALHA: n„o encontrado em UnblockHit.esp!");
     }
     else {
-        SKSE::log::info("UnblockHit carregado com sucesso.");
+        SKSE::log::info(
+            "UnblockHit loaded: FormID={:08X}, model='{}', artType={}.",
+            UnblockHit->GetFormID(),
+            UnblockHit->GetModel(),
+            UnblockHit->data.artType.underlying());
+    }
+    if (!UnblockPowerHit) {
+        SKSE::log::critical("FAILED: UnblockblePowerEffect was not found.");
+    }
+    if (!UnblockHitSound || !UnblockHitPowerSound) {
+        SKSE::log::critical("FALHA: um ou mais sound descriptors unblockable n„o foram encontrados.");
     }
 
 }
@@ -322,7 +397,7 @@ void Sink::InitializeForms() {
 void Sink::ScheduleSinkRegistration(RE::Actor* actor, int attempts)
 {
     if (attempts > 20) {
-        SKSE::log::critical("[Actor3DLoadEventHandler] Desistindo ap√≥s {} tentativas para o ator {:08X}.", attempts, actor->GetFormID());
+        SKSE::log::critical("[Actor3DLoadEventHandler] Desistindo apÛs {} tentativas para o ator {:08X}.", attempts, actor->GetFormID());
         return;
     }
     

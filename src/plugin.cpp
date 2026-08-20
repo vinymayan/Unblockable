@@ -4,16 +4,68 @@
 #include "Serialization.h"
 #include "Manager.h"
 
+namespace
+{
+    bool hasDFG = false;
+
+    class DynamicFormsGeneratorListener : public RE::BSTEventSink<SKSE::ModCallbackEvent>
+    {
+    public:
+        static DynamicFormsGeneratorListener* GetSingleton()
+        {
+            static DynamicFormsGeneratorListener singleton;
+            return std::addressof(singleton);
+        }
+
+        void Register()
+        {
+            if (auto source = SKSE::GetModCallbackEventSource()) {
+                source->AddEventSink(this);
+            }
+        }
+
+        RE::BSEventNotifyControl ProcessEvent(const SKSE::ModCallbackEvent* a_event, RE::BSTEventSource<SKSE::ModCallbackEvent>*) override
+        {
+            if (!a_event) {
+                return RE::BSEventNotifyControl::kContinue;
+            }
+
+            const std::string_view eventName = a_event->eventName.c_str();
+            if (eventName == "DynamicFormsGeneratorLoaded") {
+                Sink::InitializeForms();
+                Manager::GetSingleton()->PopulateAllLists();
+                return RE::BSEventNotifyControl::kContinue;
+            }
+
+            if (eventName == "DynamicFormsGeneratorUpdated") {
+                Sink::InitializeForms();
+                Manager::GetSingleton()->RefreshLists(a_event->strArg.c_str());
+                return RE::BSEventNotifyControl::kContinue;
+            }
+
+            return RE::BSEventNotifyControl::kContinue;
+        }
+    };
+}
+
 void OnMessage(SKSE::MessagingInterface::Message* message) {
+    if (message->type == SKSE::MessagingInterface::kPostLoad) {
+        hasDFG = GetModuleHandleA("DynamicFormsGenerator.dll") != nullptr;
+        if (hasDFG) {
+            logger::info("DynamicFormsGenerator.dll found");
+        }
+    }
     if (message->type == SKSE::MessagingInterface::kDataLoaded) {
-        Sink::InitializeForms();
+        if (!hasDFG) {
+            logger::critical("DynamicFormsGenerator.dll is required. Unblockable Hits will remain disabled.");
+            return;
+        }
         Hook_OnMeleeHit::install();
         UnblockableSettings::UnBlockLoad();
         UnblockableSettings::UnBlockRegister();
         RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink(Sink::PC3DLoadEventHandler::GetSingleton());
-        Manager::GetSingleton()->PopulateAllLists();
     }
-    if (message->type == SKSE::MessagingInterface::kNewGame || message->type == SKSE::MessagingInterface::kPostLoadGame) {
+    if (hasDFG && (message->type == SKSE::MessagingInterface::kNewGame || message->type == SKSE::MessagingInterface::kPostLoadGame)) {
         RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink(Sink::NpcCombatTracker::GetSingleton());
         Sink::NpcCombatTracker::RegisterSinksForExistingCombatants();
     }
@@ -29,6 +81,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
     serialization->SetSaveCallback(Tracking::Serialization::SaveCallback);
     serialization->SetLoadCallback(Tracking::Serialization::LoadCallback);
     serialization->SetRevertCallback(Tracking::Serialization::RevertCallback);
+    DynamicFormsGeneratorListener::GetSingleton()->Register();
     SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
     return true;
 }
